@@ -25,8 +25,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # 🌟 核心修正：改用 python -m playwright install 下載正確的 Chromium 核心
     - name: 安裝 Playwright 瀏覽器核心
-      run: npx playwright install chromium
+      run: python -m playwright install chromium
 
     - name: 執行 AI 新聞過濾與網頁生成
       env:
