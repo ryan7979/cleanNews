@@ -12,12 +12,20 @@ from string import Template
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
+# 🌟 核心修正：霸道強制指令！每次程式一啟動，直接在雲端把舊資料庫和舊網頁炸掉，徹底消滅快取 Bug
+if os.path.exists("news.db"):
+    try:
+        os.remove("news.db")
+        print("💥 已強制抹除舊的 news.db 資料庫，啟動全新乾淨大抓取！")
+    except Exception as e:
+        print(f"抹除資料庫失敗: {e}")
+
 # 1. 初始化 AI 客戶端
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# 2. 初始化資料庫
+# 2. 初始化全新資料庫
 conn = sqlite3.connect("news.db")
 conn.row_factory = sqlite3.Row  
 cursor = conn.cursor()
@@ -42,7 +50,7 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# 主流媒體原廠 RSS 網址
+# 主流媒體官方原廠 RSS 網址
 RSS_SOURCES = {
     "ETtoday 新聞雲": "https://feedburner.com",
     "自由時報電子報": "https://ltn.com.tw",
@@ -78,11 +86,11 @@ for source_name, url in RSS_SOURCES.items():
     if not feed.entries:
         continue
         
-    for entry in feed.entries[:15]:
+    for entry in feed.entries[:15]:  # 每次各抓 15 則
         title = entry.title
         raw_description = entry.get('summary', '')
         
-        # 🌟 精準對齊 ETtoday 的 channel/item/image 階層抓取
+        # 精準對齊 ETtoday 的 channel/item/image 階層抓取
         img_url = ""
         if 'image' in entry:
             img_url = entry.get('image', '')
@@ -102,7 +110,6 @@ for source_name, url in RSS_SOURCES.items():
         summary = summary.strip()[:150]
         
         link = entry.link
-        # 🌟 修正：確保提取正確的發布時間格式字串
         pub_date_str = entry.get('published', today_str)
         
         # 🤖 AI 標籤判讀
@@ -119,7 +126,7 @@ for source_name, url in RSS_SOURCES.items():
         except Exception:
             pass
 
-        # 🌟 修正：確保 inserted_count 與 updated_count 計數器位置完全精確
+        # 寫入或更新
         try:
             cursor.execute("""
             INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, ai_label, created_at)
