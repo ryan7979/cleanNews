@@ -3,50 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的無業配乾淨新聞</title>
-    <!-- 引入 Tailwind CSS 漂亮排版 -->
+    <title>📰 專屬乾淨新聞牆</title>
+    <!-- 引入最新的 Tailwind CSS 進行精美排版 -->
     <script src="https://jsdelivr.net"></script>
+    <style>
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;  
+            overflow: hidden;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
-    <div class="max-w-4xl mx-auto p-4">
-        <header class="mb-6 text-center">
-            <h1 class="text-3xl font-bold text-blue-600">📰 我的乾淨新聞牆</h1>
-            <p class="text-sm text-gray-500 mt-1">AI 已自動過濾業配文與特定記者</p>
-        </header>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen">
 
-        <!-- 日期導覽列 (由 Python 動態產生) -->
-        <div class="bg-white p-3 rounded-lg shadow mb-6 overflow-x-auto flex gap-2">
-            <span class="font-bold text-gray-600 min-w-[50px] align-middle">日期：</span>
-            <a href="../index.html" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">最新</a>
-            {% for d in date_list %}
-            <a href="/archive/{{ d }}.html" class="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm">{{ d }}</a>
-            {% endfor %}
-        </div>
-
-        <!-- 新聞列表 -->
-        <div class="grid gap-6">
-            {% for news in news_list %}
-            <div class="bg-white rounded-lg shadow-md overflow-hidden flex flex-col md:flex-row">
-                {% if news.image_url %}
-                <img src="{{ news.image_url }}" class="w-full md:w-48 h-48 object-cover" alt="新聞圖片">
-                {% endif %}
-                <div class="p-4 flex flex-col justify-between flex-1">
-                    <div>
-                        <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded text-blue-600 bg-blue-200 mb-2">
-                            {{ news.source }}
-                        </span>
-                        <h2 class="text-xl font-bold mb-2 hover:text-blue-500">
-                            <a href="{{ news.link }}" target="_blank">{{ news.title }}</a>
-                        </h2>
-                        <p class="text-gray-600 text-sm line-clamp-3">{{ news.summary }}</p>
-                    </div>
-                    <div class="text-xs text-gray-400 mt-4">發布時間：{{ news.pub_date }}</div>
-                </div>
+    <!-- 頂部精美橫幅 -->
+    <div class="bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-800 text-white shadow-md">
+        <div class="max-w-5xl mx-auto px-4 py-8 text-center md:text-left md:flex md:items-center md:justify-between">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight flex items-center justify-center md:justify-start gap-2">
+                    📰 我的乾淨新聞牆
+                </h1>
+                <p class="text-blue-100 text-sm mt-2 font-medium">已成功放行各大媒體官方正宗源新聞</p>
             </div>
-            {% else %}
-            <p class="text-center text-gray-500 py-8">當天沒有符合條件的乾淨新聞。</p>
-            {% endfor %}
+            <div class="mt-4 md:mt-0 text-xs bg-white/10 backdrop-blur-md px-4 py-2 rounded-full inline-block border border-white/10 text-blue-200">
+                ⚡ 雲端每小時全自動同步
+            </div>
         </div>
     </div>
+
+    <div class="max-w-5xl mx-auto px-4 py-8">
+        
+        <!-- 日期導覽列導航區 -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm mb-8 border border-slate-100">
+            <div class="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-none">
+                <span class="text-sm font-bold text-slate-500 whitespace-nowrap">📅 歷史存檔：</span>
+                <a href="../index.html" class="px-4 py-1.5 bg-blue-600 text-white rounded-full text-xs font-semibold shadow-sm transition hover:bg-blue-700 whitespace-nowrap">
+                    最新
+                </a>
+                {% for d in date_list %}
+                <a href="/archive/{{ d[0] }}.html" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-xs font-medium transition whitespace-nowrap">
+                    {{ d[0] }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 新聞卡片網格（電腦版採雙欄排版、手機自動變單欄） -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {% for news in news_list %}
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5">
+                
+                <div>
+                    <!-- 卡片頂部資訊列 -->
+                    <div class="p-4 pb-2 flex items-center justify-between">
+                        <span class="text-xs font-bold px-2.5 py-1 rounded-md text-blue-700 bg-blue-50 border border-blue-100">
+                            {{ news.source }}
+                        </span>
+                        <span class="text-[11px] text-slate-400 font-medium">
+                            {{ news.pub_date }}
+                        </span>
+                    </div>
+
+                    <!-- 新聞標題與內容 -->
+                    <div class="p-4 pt-0">
+                        <h2 class="text-lg font-bold text-slate-950 leading-snug mb-2 hover:text-blue-600 transition">
+                            <a href="{{ news.link }}" target="_blank" class="focus:outline-none">
+                                {{ news.title }}
+                            </a>
+                        </h2>
+                        <p class="text-slate-600 text-sm leading-relaxed line-clamp-3">
+                            {{ news.summary }}
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 卡片底部點擊按鈕 -->
+                <div class="p-4 pt-0 mt-2 border-t border-slate-50 flex justify-end">
+                    <a href="{{ news.link }}" target="_blank" class="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 group">
+                        閱讀原文 
+                        <span class="transform group-hover:translate-x-0.5 transition-transform">→</span>
+                    </a>
+                </div>
+
+            </div>
+            {% else %}
+            <div class="col-span-full bg-white rounded-2xl shadow-sm p-12 text-center border border-slate-100">
+                <p class="text-slate-400 text-sm">目前此日期尚無乾淨新聞資料。</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 頁尾宣告 -->
+        <footer class="mt-16 text-center text-xs text-slate-400 border-t border-slate-200 pt-6">
+            <p>© 自訂新聞聚合器系統 · 內容來源為各大媒體公開 RSS 頻道</p>
+        </footer>
+
+    </div>
+
 </body>
 </html>
