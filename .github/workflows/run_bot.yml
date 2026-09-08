@@ -1,38 +1,13 @@
-name: 每天定時抓取乾淨新聞
-
-on:
-  schedule:
-    - cron: '0 * * * *'  # 每小時的第一分鐘自動執行 (UTC時間)
-  workflow_dispatch:      # 允許你在 GitHub 網頁上手動點擊立即執行
-
-permissions:
-  contents: write         # 賦予虛擬機把程式碼推回儲存庫的權限
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - name: 複製儲存庫檔案
-      uses: actions/checkout@v4
-
-    - name: 設定 Python 環境
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
     - name: 安裝相依套件
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # 🌟 請務必補上這一步，讓 GitHub Actions 自動下載無頭瀏覽器環境
+    - name: 安裝 Playwright 瀏覽器核心
+      run: npx playwright install chromium
+
     - name: 執行 AI 新聞過濾與網頁生成
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # 讀取雲端密鑰
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python app.py
-
-    - name: 自動將新網頁與資料庫 Commit 並推回 GitHub
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add news.db index.html archive/*.html
-        git diff --quiet && git diff --staged --quiet || (git commit -m "自動更新新聞牆" && git push)
