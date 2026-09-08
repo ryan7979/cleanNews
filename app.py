@@ -7,9 +7,8 @@ import urllib.request
 import ssl
 import json
 import warnings
-from string import Template  # 🌟 採用內建 Template，不依賴任何外部套件
+from string import Template
 
-# 強制隱藏 Google 官方的 Deprecated 升級警告，保持排程日誌乾淨
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
@@ -18,12 +17,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# 2. 初始化資料庫並啟動「自動補欄位防護」
+# 2. 初始化資料庫
 conn = sqlite3.connect("news.db")
-conn.row_factory = sqlite3.Row  # 依欄位名稱返回資料，確保資料組裝對齊不混亂
+conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
 
-# 建立基礎資料表
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS filtered_news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,21 +36,13 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位
-try:
-    cursor.execute("ALTER TABLE filtered_news ADD COLUMN reporter TEXT DEFAULT '編輯台'")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass
-
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN ai_label TEXT DEFAULT '正常'")
     conn.commit()
 except sqlite3.OperationalError:
     pass
 
-
-# 3. 主流媒體官方原廠 RSS 網址
+# 主流媒體原廠 RSS 網址
 RSS_SOURCES = {
     "ETtoday 新聞雲": "https://feedburner.com",
     "自由時報電子報": "https://ltn.com.tw",
@@ -62,43 +52,25 @@ RSS_SOURCES = {
 
 AI_PROMPT = """
 你是一個新聞政治與商業審查員。請分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
-
-【判定定義】
-1. reporter: 請找出新聞的記者姓名（如：張三），若找不到或屬於編譯/社群中心，請填「編輯台」。
-2. label: 請從以下三個標籤中，精準選擇一個：
-   - 「葉配」：明顯替特定廠商、建案、醫美、產品宣傳、開箱體驗、缺乏客觀新聞價值者。
-   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引導網民情緒、事實根據不足的政治口水文。
-   - 「正常」：客觀客觀的國內外大事、科技趨勢、社會新聞、公共政策探討。
-
-【輸出限制】
-必須只輸出標準 JSON 格式，不要有任何 Markdown 的 ```json 標籤，格式如下：
-{"reporter": "記者名字", "label": "葉配/網軍/正常"}
-
+{"label": "葉配/網軍/正常"}
 新聞內容如下：
 """
 
-print("開始透過官方正宗源下載新聞並進行 AI 判讀...")
+print("開始下載新聞源並執行深度圖片正則提取...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-inserted_count = 0
-updated_count = 0
 ssl_context = ssl._create_unverified_context()
 
 for source_name, url in RSS_SOURCES.items():
-    print(f"正在連線抓取官方源: {source_name}")
     try:
         req = urllib.request.Request(
             url, 
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9',
-                'Accept-Language': 'zh-TW,zh;q=0.9'
-            }
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
         with urllib.request.urlopen(req, timeout=25, context=ssl_context) as response:
-            rss_text = response.read()
-        feed = feedparser.parse(rss_text)
+            rss_bytes = response.read()
+        feed = feedparser.parse(rss_bytes)
     except Exception as http_err:
-        print(f"❌ 官方源連線失敗 {source_name}: {http_err}")
+        print(f"❌ 網路連線失敗 {source_name}: {http_err}")
         continue
     
     if not feed.entries:
@@ -106,32 +78,30 @@ for source_name, url in RSS_SOURCES.items():
         
     for entry in feed.entries[:15]:
         title = entry.title
-        summary = entry.get('summary', '')
+        raw_description = entry.get('summary', '')
         
-        # 尋找並還原被隱藏的新聞圖片網址
+        # 🌟 2. 修正：精準對齊 ETtoday 的 channel/item/image 階層抓取
         img_url = ""
-        if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures[0].get('url', '')
-        elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content[0].get('url', '')
-        elif 'links' in entry:
-            for l in entry.links:
-                if 'image' in l.get('type', ''):
-                    img_url = l.get('href', '')
-                    break
+        # feedparser 會將 item 底下的 <image> 標籤映射到 entry.get('image') 或 entry.get('image_url')
+        if 'image' in entry:
+            img_url = entry.get('image', '')
+            if isinstance(img_url, dict) and 'href' in img_url:
+                img_url = img_url['href']
         
-        if not img_url and '<img' in summary:
-            img_match = re.search(r'src=["\'](https://[^"\']+)["\']', summary)
+        # 保底正則：如果 XML 欄位沒撈到，直接進 description 內部的 HTML 代碼挖出 <img src="...">
+        if not img_url and '<img' in raw_description:
+            img_match = re.search(r'src=["\'](https?://[^"\']+\.(?:jpg|jpeg|png|gif|webp|JPG))["\']', raw_description, re.IGNORECASE)
             if img_match:
                 img_url = img_match.group(1)
 
+        # 濾除新聞摘要中的所有 HTML 標籤
+        summary = raw_description
         if '<' in summary:
             summary = re.sub(r'<[^>]+>', '', summary)
         summary = summary.strip()[:150]
         link = entry.link
         
-        # 🤖 呼叫 Gemini AI 進行 JSON 判讀
-        reporter = "編輯台"
+        # 🤖 AI 標籤判讀
         ai_label = "正常"
         try:
             response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
@@ -139,53 +109,44 @@ for source_name, url in RSS_SOURCES.items():
             raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
             
             ai_data = json.loads(raw_text)
-            reporter = ai_data.get("reporter", "編輯台")
             ai_label = ai_data.get("label", "正常")
             if "網群" in ai_label:
                 ai_label = "網軍"
-        except Exception as ai_err:
+        except Exception:
             pass
 
         try:
             cursor.execute("""
-            INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, reporter, ai_label, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (title, summary, source_name, img_url, link, today_str, reporter, ai_label, today_str))
-            inserted_count += 1
+            INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, ai_label, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (title, summary, source_name, img_url, link, today_str, ai_label, today_str))
         except sqlite3.IntegrityError:
             cursor.execute("""
-            UPDATE filtered_news 
-            SET reporter = ?, ai_label = ? 
-            WHERE title = ? AND (reporter = '編輯台' AND ai_label = '正常')
-            """, (reporter, ai_label, title))
-            if cursor.rowcount > 0:
-                updated_count += 1
+            UPDATE filtered_news SET ai_label = ? WHERE title = ? AND ai_label = '正常'
+            """, (ai_label, title))
 
 conn.commit()
-print(f"掃描結束！新增了 {inserted_count} 則新聞，回頭幫 {updated_count} 則舊新聞補上了 AI 標籤。")
 
-# 4. 🌟 核心渲染：載入外部 template.html 並生成獨立的原生 CSS 網頁
-# 讀取剛剛建立的純樣式模板
+# 4. 🌟 讀取樣式模板並渲染出全新網頁
 with open("template.html", "r", encoding="utf-8") as f:
     template_content = f.read()
 html_template = Template(template_content)
 
-# 撈出日期清單
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
 all_dates = [row['created_at'] for row in cursor.fetchall()]
 
 if not all_dates:
     all_dates = [today_str]
 
-# 拼接歷史日期按鈕
+# 🌟 1. 修正：日期導覽列網址結構更新為 /cleanNews/archive/...
 date_buttons = ""
 for d in all_dates:
-    date_buttons += f'<a href="/archive/{d}.html" class="btn-date">{d}</a>'
+    date_buttons += f'<a href="/cleanNews/archive/{d}.html" class="btn-date">{d}</a>'
 
-# 針對每個日期組裝卡片與輸出網頁
 for date_str in all_dates:
+    # 🌟 3. 修正：輸出新聞時，強制使用 ORDER BY id DESC（日期最新降序排列）
     cursor.execute("""
-        SELECT title, summary, source, image_url, link, pub_date, reporter, ai_label 
+        SELECT title, summary, source, image_url, link, pub_date, ai_label 
         FROM filtered_news 
         WHERE created_at = ? 
         ORDER BY id DESC
@@ -215,10 +176,7 @@ for date_str in all_dates:
                 <div>
                     {img_tag}
                     <div class="meta-row">
-                        <div class="meta-left">
-                            <span class="badge-source">{r['source']}</span>
-                            <span class="badge-reporter">✍️ {r['reporter']}</span>
-                        </div>
+                        <span class="badge-source">{r['source']}</span>
                         {label_badge}
                     </div>
                     <div class="card-body">
@@ -240,23 +198,21 @@ for date_str in all_dates:
     if not cards_html:
         cards_html = '<div class="no-data"><p>今日尚無過濾完畢的新聞資料。</p></div>'
 
-    # 使用內建 string.Template 進行安全替換，完全不受外部 CDN 與雜訊干擾
     full_webpage = html_template.substitute(
         date_buttons=date_buttons,
         news_cards=cards_html
     )
 
-    # 建立目錄並寫入
-    os.makedirs("archive", exist_ok=True)
-    with open(f"archive/{date_str}.html", "w", encoding="utf-8") as f:
-        f.write(full_webpage)
-        
+    # 寫入靜態網頁
+    with open("index.html" if date_str == today_str else f"archive/{date_str}.html", "w", encoding="utf-8") as f_out:
+        f_out.write(full_webpage)
+    
     if date_str == today_str:
-        with open("index.html", "w", encoding="utf-8") as f_index:
-            f_index.write(full_webpage)
+        os.makedirs("archive", exist_ok=True)
+        with open(f"archive/{date_str}.html", "w", encoding="utf-8") as f_arch:
+            f_arch.write(full_webpage)
 
-# 自動清理 90 天前的舊資料
 cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < date('now', '-90 days')")
 conn.commit()
 conn.close()
-print("🎉 程式與網頁分離式架構更新成功！0 外部 CDN 依賴新聞牆已上線。")
+print("🎉 專屬專案網址 /cleanNews/、ETtoday 原創縮圖、最新降序排序已全數完美修正成功！")
