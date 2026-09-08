@@ -3,8 +3,8 @@ import sqlite3
 import datetime
 import feedparser
 import re
-import urllib.request
 from jinja2 import Template
+from playwright.sync_api import sync_playwright
 
 # 1. 初始化資料庫
 conn = sqlite3.connect("news.db")
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 2. RSS 訂閱來源設定 (這裡提供多個台灣穩定更新的媒體)
+# 2. RSS 訂閱來源設定
 RSS_SOURCES = {
     "科技新報": "https://technews.tw",
     "公視新聞": "https://pts.org.tw",
@@ -31,68 +31,61 @@ RSS_SOURCES = {
     "地球圖輯隊": "https://yam.travel"
 }
 
-# 3. 抓取並直接放行所有新聞
-print("開始抓取新聞...")
+# 3. 使用 Playwright 模擬真實瀏覽器抓取
+print("啟動真實瀏覽器引擎抓取新聞...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 inserted_count = 0
 
-for source_name, url in RSS_SOURCES.items():
-    print(f"正在抓取: {source_name}")
-    
-    try:
-        # 🌟 核心修正：偽裝成 Chrome 瀏覽器發出請求，防止被媒體網站 403 阻擋
-        req = urllib.request.Request(
-            url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        )
-        
-        # 讀取 RSS 文字內容
-        with urllib.request.urlopen(req, timeout=15) as response:
-            rss_html = response.read()
-            
-        # 讓 feedparser 解析下載下來的文字
-        feed = feedparser.parse(rss_html)
-        
-    except Exception as http_err:
-        print(f"❌ 網路連線或下載失敗 {source_name}: {http_err}")
-        continue
-    
-    if not feed.entries:
-        print(f"警告：解析後發現無內容 {source_name}")
-        continue
-        
-    for entry in feed.entries[:15]:  # 每次抓各媒體最新 15 則
-        title = entry.title
-        summary = entry.get('summary', '')
-        
-        # 清除摘要中多餘的 HTML 標籤，保留前 150 字純文字
-        if '<' in summary:
-            summary = re.sub(r'<[^>]+>', '', summary)
-        summary = summary.strip()[:150]
-        
-        link = entry.link
-        
-        # 尋找 RSS 中的圖片網址
-        img_url = ""
-        if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures[0].get('url', '')
-        elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content[0].get('url', '')
-        elif 'links' in entry:
-            for l in entry.links:
-                if 'image' in l.get('type', ''):
-                    img_url = l.get('href', '')
-                    break
-        
-        # 直接放行，寫入資料庫
+with sync_playwright() as p:
+    # 啟動背景瀏覽器，並設定與正常電腦一模一樣的解析度與外觀
+    browser = p.chromium.launch(headless=True)
+    context = browser.new_context(
+        viewport={'width': 1920, 'height': 1080},
+        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    )
+    page = context.new_page()
+
+    for source_name, url in RSS_SOURCES.items():
+        print(f"正在透過瀏覽器讀取: {source_name}")
         try:
-            cursor.execute("""
-            INSERT OR IGNORE INTO filtered_news (title, summary, source, image_url, link, pub_date, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (title, summary, source_name, img_url, link, today_str, today_str))
-            inserted_count += 1
+            # 前往網址並等待網路完全放行
+            page.goto(url, wait_until="networkidle", timeout=30000)
+            rss_content = page.content()
+            
+            # 使用 feedparser 解析真實瀏覽器帶回來的 XML 文字
+            feed = feedparser.parse(rss_content)
+            
+            if not feed.entries:
+                print(f"⚠️ 瀏覽器抓取成功，但該媒體目前無新文章: {source_name}")
+                continue
+                
+            for entry in feed.entries[:15]:
+                title = entry.title
+                summary = entry.get('summary', '')
+                
+                if '<' in summary:
+                    summary = re.sub(r'<[^>]+>', '', summary)
+                summary = summary.strip()[:150]
+                
+                link = entry.link
+                
+                # 抓取圖片
+                img_url = ""
+                if 'enclosures' in entry and len(entry.enclosures) > 0:
+                    img_url = entry.enclosures.get('url', '')
+                elif 'media_content' in entry and len(entry.media_content) > 0:
+                    img_url = entry.media_content.get('url', '')
+                
+                cursor.execute("""
+                INSERT OR IGNORE INTO filtered_news (title, summary, source, image_url, link, pub_date, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (title, summary, source_name, img_url, link, today_str, today_str))
+                inserted_count += 1
+                
         except Exception as e:
-            print(f"寫入失敗: {e}")
+            print(f"❌ 瀏覽器模擬失敗 {source_name}: {e}")
+            
+    browser.close()
 
 conn.commit()
 print(f"本次掃描結束，嘗試寫入/更新了 {inserted_count} 則新聞。")
@@ -100,16 +93,12 @@ print(f"本次掃描結束，嘗試寫入/更新了 {inserted_count} 則新聞�
 # 4. 生成 HTML 網頁
 os.makedirs("archive", exist_ok=True)
 
-# 讀取 Jinja2 模板
 with open("templates/index.html", "r", encoding="utf-8") as f:
     template_html = f.read()
 tmpl = Template(template_html)
 
-# 撈出資料庫裡所有存在的日期列表
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]
-
-print(f"【偵錯資訊】目前資料庫中擁有的日期群：{all_dates}")
+all_dates = [row for row in cursor.fetchall()]
 
 if not all_dates:
     all_dates = [today_str]
@@ -127,23 +116,20 @@ for date_str in all_dates:
     news_list = []
     for r in rows:
         news_list.append({
-            "title": r[0],
-            "summary": r[1],
-            "source": r[2],
-            "image_url": r[3],
-            "link": r[4],
-            "pub_date": r[5]
+            "title": r,
+            "summary": r,
+            "source": r,
+            "image_url": r,
+            "link": r,
+            "pub_date": r
         })
     
-    print(f"【偵錯資訊】日期 {date_str} 成功撈出 {len(news_list)} 則新聞，準備渲染網頁...")
     rendered_html = tmpl.render(news_list=news_list, date_list=all_dates)
     
-    # 寫入歷史存檔
     with open(f"archive/{date_str}.html", "w", encoding="utf-8") as f:
         f.write(rendered_html)
         
-    # 如果是最新的一天，同時覆蓋 index.html 作為網站首頁
-    if date_str == all_dates[0]:
+    if date_str == all_dates:
         with open("index.html", "w", encoding="utf-8") as f_index:
             f_index.write(rendered_html)
 
@@ -151,4 +137,4 @@ for date_str in all_dates:
 cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < date('now', '-90 days')")
 conn.commit()
 conn.close()
-print("網頁與資料庫更新成功！所有新聞已成功放行。")
+print("網頁與資料庫更新成功！")
