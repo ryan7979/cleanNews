@@ -7,9 +7,9 @@ import urllib.request
 import ssl
 import json
 import warnings
-from jinja2 import Template
+from string import Template  # 🌟 採用內建 Template，不依賴任何外部套件
 
-# 強制隱藏 Google 官方的 Deprecated 升級警告
+# 強制隱藏 Google 官方的 Deprecated 升級警告，保持排程日誌乾淨
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
@@ -20,6 +20,7 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 2. 初始化資料庫並啟動「自動補欄位防護」
 conn = sqlite3.connect("news.db")
+conn.row_factory = sqlite3.Row  # 依欄位名稱返回資料，確保資料組裝對齊不混亂
 cursor = conn.cursor()
 
 # 建立基礎資料表
@@ -87,7 +88,11 @@ for source_name, url in RSS_SOURCES.items():
     try:
         req = urllib.request.Request(
             url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9',
+                'Accept-Language': 'zh-TW,zh;q=0.9'
+            }
         )
         with urllib.request.urlopen(req, timeout=25, context=ssl_context) as response:
             rss_text = response.read()
@@ -106,9 +111,9 @@ for source_name, url in RSS_SOURCES.items():
         # 尋找並還原被隱藏的新聞圖片網址
         img_url = ""
         if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures.get('url', '')
+            img_url = entry.enclosures[0].get('url', '')
         elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content.get('url', '')
+            img_url = entry.media_content[0].get('url', '')
         elif 'links' in entry:
             for l in entry.links:
                 if 'image' in l.get('type', ''):
@@ -139,10 +144,8 @@ for source_name, url in RSS_SOURCES.items():
             if "網群" in ai_label:
                 ai_label = "網軍"
         except Exception as ai_err:
-            # 🌟 保底機制：AI 失敗不阻擋，沿用預設值放行
-            print(f"AI 判讀異常，啟動防護放行: {ai_err}")
+            pass
 
-        # 🌟 核心修正：不論如何都先嘗試寫入。如果是新新聞，直接帶有判讀標籤。
         try:
             cursor.execute("""
             INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, reporter, ai_label, created_at)
@@ -150,7 +153,6 @@ for source_name, url in RSS_SOURCES.items():
             """, (title, summary, source_name, img_url, link, today_str, reporter, ai_label, today_str))
             inserted_count += 1
         except sqlite3.IntegrityError:
-            # 🌟 核心修正：如果是舊新聞（已存在），強迫更新其 AI 標籤與記者欄位，防止舊資料沒被判讀到
             cursor.execute("""
             UPDATE filtered_news 
             SET reporter = ?, ai_label = ? 
@@ -162,21 +164,25 @@ for source_name, url in RSS_SOURCES.items():
 conn.commit()
 print(f"掃描結束！新增了 {inserted_count} 則新聞，回頭幫 {updated_count} 則舊新聞補上了 AI 標籤。")
 
-# 4. 生成 HTML 網頁
-os.makedirs("archive", exist_ok=True)
+# 4. 🌟 核心渲染：載入外部 template.html 並生成獨立的原生 CSS 網頁
+# 讀取剛剛建立的純樣式模板
+with open("template.html", "r", encoding="utf-8") as f:
+    template_content = f.read()
+html_template = Template(template_content)
 
-with open("templates/index.html", "r", encoding="utf-8") as f:
-    template_html = f.read()
-tmpl = Template(template_html)
-
+# 撈出日期清單
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]  # 🌟 修正：確保提取出純字串陣列
-
-print(f"【資料庫歷史日期群】: {all_dates}")
+all_dates = [row['created_at'] for row in cursor.fetchall()]
 
 if not all_dates:
     all_dates = [today_str]
 
+# 拼接歷史日期按鈕
+date_buttons = ""
+for d in all_dates:
+    date_buttons += f'<a href="/archive/{d}.html" class="btn-date">{d}</a>'
+
+# 針對每個日期組裝卡片與輸出網頁
 for date_str in all_dates:
     cursor.execute("""
         SELECT title, summary, source, image_url, link, pub_date, reporter, ai_label 
@@ -184,24 +190,73 @@ for date_str in all_dates:
         WHERE created_at = ? 
         ORDER BY id DESC
     """, (date_str,))
-    rows = cursor.fetchall()
+    news_rows = cursor.fetchall()
     
-    news_list = []
-    for r in rows:
-        news_list.append({
-            "title": r[0], "summary": r[1], "source": r[2], "image_url": r[3],
-            "link": r[4], "pub_date": r[5], "reporter": r[6], "ai_label": r[7]
-        })
-    
-    rendered_html = tmpl.render(news_list=news_list, date_list=all_dates)
+    cards_html = ""
+    for r in news_rows:
+        img_tag = ""
+        if r["image_url"] and "http" in r["image_url"]:
+            img_tag = f"""
+            <div class="img-container">
+                <img src="{r['image_url']}" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            """
+
+        label_text = r["ai_label"]
+        if label_text == "正常":
+            label_badge = '<span class="badge-label label-normal">🟢 正常新聞</span>'
+        elif label_text == "葉配":
+            label_badge = '<span class="badge-label label-yp">🟡 廠商業配</span>'
+        else:
+            label_badge = '<span class="badge-label label-wj">🔴 網軍風向</span>'
+
+        cards_html += f"""
+            <div class="card">
+                <div>
+                    {img_tag}
+                    <div class="meta-row">
+                        <div class="meta-left">
+                            <span class="badge-source">{r['source']}</span>
+                            <span class="badge-reporter">✍️ {r['reporter']}</span>
+                        </div>
+                        {label_badge}
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="{r['link']}" target="_blank">{r['title']}</a>
+                        </h2>
+                        <p class="card-text">{r['summary']}</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 {r['pub_date']}</span>
+                    <a href="{r['link']}" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        """
+
+    if not cards_html:
+        cards_html = '<div class="no-data"><p>今日尚無過濾完畢的新聞資料。</p></div>'
+
+    # 使用內建 string.Template 進行安全替換，完全不受外部 CDN 與雜訊干擾
+    full_webpage = html_template.substitute(
+        date_buttons=date_buttons,
+        news_cards=cards_html
+    )
+
+    # 建立目錄並寫入
+    os.makedirs("archive", exist_ok=True)
     with open(f"archive/{date_str}.html", "w", encoding="utf-8") as f:
-        f.write(rendered_html)
+        f.write(full_webpage)
         
     if date_str == today_str:
         with open("index.html", "w", encoding="utf-8") as f_index:
-            f_index.write(rendered_html)
+            f_index.write(full_webpage)
 
+# 自動清理 90 天前的舊資料
 cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < date('now', '-90 days')")
 conn.commit()
 conn.close()
-print("🎉 網頁與資料庫更新成功！")
+print("🎉 程式與網頁分離式架構更新成功！0 外部 CDN 依賴新聞牆已上線。")
