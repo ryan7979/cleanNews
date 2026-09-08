@@ -1,4 +1,3 @@
 feedparser
-google-generativeai
 jinja2
-playwright
+google-genai
