@@ -7,41 +7,59 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #020617; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; line-height: 1.5; }
+        
+        /* 橫幅樣式 */
         .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); border-bottom: 1px solid #1e293b; padding: 2.5rem 1.5rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
         .header-container { max-width: 1024px; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 1rem; }
         @media (min-width: 768px) { .header-container { flex-direction: row; text-align: left; } }
         .header-title { font-size: 1.875rem; font-weight: 900; color: #ffffff; letter-spacing: -0.025em; }
         .header-subtitle { color: #94a3b8; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
-        .badge-ai { background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        .badge-ai { background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; shadow: inset 0 2px 4px 0 rgba(0,0,0,0.06); white-space: nowrap; }
+        
         .main-container { max-width: 1024px; margin: 0 auto; padding: 2rem 1rem; }
+        
+        /* 日期區樣式 */
         .date-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
         .date-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
-        .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; transition: all 0.2s; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
         .btn-date:hover { background-color: #334155; color: #ffffff; }
+        
+        /* 網格與大圓角卡片 */
         .news-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
         @media (min-width: 768px) { .news-grid { grid-template-columns: repeat(2, 1fr); } }
-        .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .card:hover { border-color: rgba(99, 102, 241, 0.5); transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
-        .img-container { width: 100%; height: 12rem; overflow: hidden; background-color: #020617; border-bottom: 1px solid #1e293b; }
+        
+        .img-container { width: 100%; height: 13.5rem; overflow: hidden; background-color: #020617; border-bottom: 1px solid #1e293b; }
         .card-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
         .card:hover .card-img { transform: scale(1.03); }
+        
+        /* 中繼列資訊 */
         .meta-row { padding: 1.25rem 1.25rem 0.5rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
-        .meta-left { display: flex; align-items: center; gap: 0.5rem; }
         .badge-source { font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.625rem; border-radius: 0.75rem; color: #818cf8; background-color: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); }
-        .badge-reporter { font-size: 0.75rem; color: #94a3b8; font-weight: 600; background-color: #1e293b; padding: 0.25rem 0.5rem; border-radius: 0.5rem; }
+        
+        /* AI 判讀燈號 */
         .badge-label { font-size: 0.6875rem; font-weight: 800; padding: 0.125rem 0.625rem; border-radius: 9999px; }
         .label-normal { color: #34d399; background-color: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.2); }
         .label-yp { color: #fbbf24; background-color: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2); }
         .label-wj { color: #f87171; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); }
+        /* 🌟 補上 AI 異常狀態燈樣式（科技灰） */
+        .label-err { color: #94a3b8; background-color: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.2); }
+        
+        /* 標題與內文 */
         .card-body { padding: 0 1.25rem 1.25rem 1.25rem; flex-grow: 1; }
         .card-title { font-size: 1.125rem; font-weight: 700; color: #f1f5f9; line-height: 1.4; margin-bottom: 0.75rem; }
-        .card-title a { color: inherit; text-decoration: none; }
+        .card-title a { color: inherit; text-decoration: none; transition: color 0.2s; }
         .card-title a:hover { color: #818cf8; }
         .card-text { color: #94a3b8; font-size: 0.875rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        
+        /* 底部列 */
         .card-footer { padding: 1.25rem; border-top: 1px solid rgba(30, 41, 59, 0.5); display: flex; justify-content: space-between; align-items: center; background-color: rgba(15, 23, 42, 0.2); }
         .news-date { font-size: 0.6875rem; color: #64748b; font-weight: 500; }
-        .btn-link { font-size: 0.75rem; font-weight: 700; color: #818cf8; text-decoration: none; display: flex; align-items: center; gap: 0.25rem; }
+        .btn-link { font-size: 0.75rem; font-weight: 700; color: #818cf8; text-decoration: none; display: flex; align-items: center; gap: 0.25rem; transition: color 0.2s; }
         .btn-link:hover { color: #a5b4fc; }
+        
         .no-data { text-align: center; padding: 4rem; background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; color: #64748b; grid-column: 1 / -1; }
         footer { text-align: center; font-size: 0.75rem; color: #475569; margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #0f172a; }
     </style>
@@ -51,21 +69,21 @@
         <div class="header-container">
             <div>
                 <h1 class="header-title">🤖 AI 智能乾淨新聞牆</h1>
-                <p class="header-subtitle">即時解析：媒體來源 / 記者姓名 / 網軍與業配過濾</p>
+                <p class="header-subtitle">即時解析：媒體來源 / 網軍與業配深度標籤過濾</p>
             </div>
             <div>
-                <span class="badge-ai">⚡ Gemini 1.5 Flash 雲端審查</span>
+                <span class="badge-ai">⚡ Gemini 1.5 Flash 雲端雙向審查</span>
             </div>
         </div>
     </div>
     <div class="main-container">
         <div class="date-navbar">
             <span class="date-label">📅 歷史日期：</span>
-            <a href="../index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
-            <a href="/cleanNews/archive/2026-09-08.html" class="btn-date">2026-09-08</a>
+            <a href="/cleanNews/index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
+            $date_buttons
         </div>
         <div class="news-grid">
-            <div class="no-data"><p>今日尚無過濾完畢的新聞資料。</p></div>
+            $news_cards
         </div>
         <footer>
             <p>© 自訂 AI 新聞大腦系統 · 智慧判讀不代表真實立場</p>
