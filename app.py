@@ -181,6 +181,10 @@ date_buttons = ""
 for d in all_dates:
     date_buttons += f'<a href="/cleanNews/archive/{d}.html" class="btn-date">{d}</a>'
 
+source_tags = '<button type="button" class="btn-tag active" data-filter="all">全部</button>'
+for source_name in RSS_SOURCES:
+    source_tags += f'<button type="button" class="btn-tag" data-filter="{source_name}">{source_name}</button>'
+
 for date_str in all_dates:
     cursor.execute("""
         SELECT title, summary, source, image_url, link, pub_date, ai_label 
@@ -211,7 +215,7 @@ for date_str in all_dates:
             label_badge = '<span class="badge-label label-err">⚪ AI異常</span>'
 
         cards_html += f"""
-            <div class="card">
+            <div class="card" data-source="{r['source']}">
                 <div>
                     {img_tag}
                     <div class="meta-row">
@@ -239,6 +243,7 @@ for date_str in all_dates:
 
     full_webpage = html_template.substitute(
         date_buttons=date_buttons,
+        source_tags=source_tags,
         news_cards=cards_html
     )
 

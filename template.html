@@ -18,6 +18,10 @@
         .date-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
         .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
         .btn-date:hover { background-color: #334155; color: #ffffff; }
+        .tag-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .tag-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; }
+        .btn-tag { cursor: pointer; padding: 0.375rem 1rem; border-radius: 9999px; font: inherit; font-size: 0.75rem; font-weight: 500; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-tag:hover, .btn-tag.active { background-color: #4f46e5; border-color: #6366f1; color: #ffffff; }
         .news-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
         @media (min-width: 768px) { .news-grid { grid-template-columns: repeat(2, 1fr); } }
         .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -64,6 +68,10 @@
             <a href="../index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
             $date_buttons
         </div>
+        <div class="tag-navbar" aria-label="新聞來源篩選">
+            <span class="tag-label">來源：</span>
+            $source_tags
+        </div>
         <div class="news-grid">
             $news_cards
         </div>
@@ -71,5 +79,19 @@
             <p>© 自訂 AI 新聞大腦系統 · 智慧判讀不代表真實立場</p>
         </footer>
     </div>
+    <script>
+        document.querySelectorAll('.btn-tag').forEach(function (tagButton) {
+            tagButton.addEventListener('click', function () {
+                var selectedSource = tagButton.dataset.filter;
+
+                document.querySelectorAll('.btn-tag').forEach(function (button) {
+                    button.classList.toggle('active', button === tagButton);
+                });
+                document.querySelectorAll('.card').forEach(function (card) {
+                    card.hidden = selectedSource !== 'all' && card.dataset.source !== selectedSource;
+                });
+            });
+        });
+    </script>
 </body>
 </html>
