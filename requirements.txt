@@ -1,3 +1,2 @@
 feedparser
-jinja2
 google-generativeai
