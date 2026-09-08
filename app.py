@@ -7,12 +7,13 @@ import urllib.request
 import ssl
 import json
 import warnings
+import time
 from string import Template
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
-# 🌟 核心修正：霸道強制指令！每次程式一啟動，直接在雲端把舊資料庫和舊網頁炸掉，徹底消滅快取 Bug
+# 強制抹除舊資料庫，啟動全新冷啟動
 if os.path.exists("news.db"):
     try:
         os.remove("news.db")
@@ -59,7 +60,7 @@ RSS_SOURCES = {
 }
 
 AI_PROMPT = """
-你是一個新聞政治與商業審查員。請分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
+你是一個新聞審查員。請分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
 {"label": "葉配/網軍/正常"}
 新聞內容如下：
 """
@@ -71,6 +72,7 @@ updated_count = 0
 ssl_context = ssl._create_unverified_context()
 
 for source_name, url in RSS_SOURCES.items():
+    print(f"正在連線抓取: {source_name}")
     try:
         req = urllib.request.Request(
             url, 
@@ -112,9 +114,11 @@ for source_name, url in RSS_SOURCES.items():
         link = entry.link
         pub_date_str = entry.get('published', today_str)
         
-        # 🤖 AI 標籤判讀
+        # 🤖 呼叫 Gemini AI 進行 JSON 判讀
         ai_label = "正常"
         try:
+            # 每次呼叫 AI 前冷卻 3.5 秒，精確防止觸發免費版頻率限制
+            time.sleep(3.5) 
             response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
             raw_text = response.text.strip()
             raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
@@ -123,8 +127,10 @@ for source_name, url in RSS_SOURCES.items():
             ai_label = ai_data.get("label", "正常")
             if "網群" in ai_label:
                 ai_label = "網軍"
-        except Exception:
-            pass
+        except Exception as ai_err:
+            # 🌟 核心修正：如果 AI 判讀超載或失敗，直接將標籤強制設為「AI異常」保底放行！
+            print(f"⚠️ AI 判讀受限，已發動異常保底機制: {title[:12]}...")
+            ai_label = "AI異常"
 
         # 寫入或更新
         try:
@@ -182,8 +188,11 @@ for date_str in all_dates:
             label_badge = '<span class="badge-label label-normal">🟢 正常新聞</span>'
         elif label_text == "葉配":
             label_badge = '<span class="badge-label label-yp">🟡 廠商業配</span>'
-        else:
+        elif label_text == "網軍":
             label_badge = '<span class="badge-label label-wj">🔴 網軍風向</span>'
+        else:
+            # 🌟 補上網頁卡片端「AI異常」的科技灰標籤呈現
+            label_badge = '<span class="badge-label label-err">⚪ AI異常</span>'
 
         cards_html += f"""
             <div class="card">
