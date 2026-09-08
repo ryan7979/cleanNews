@@ -2,6 +2,7 @@ import os
 import sqlite3
 import datetime
 import feedparser
+import re
 from jinja2 import Template
 
 # 1. 初始化資料庫
@@ -32,6 +33,7 @@ RSS_SOURCES = {
 # 3. 抓取並直接放行所有新聞
 print("開始抓取新聞...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+inserted_count = 0
 
 for source_name, url in RSS_SOURCES.items():
     print(f"正在抓取: {source_name}")
@@ -47,7 +49,6 @@ for source_name, url in RSS_SOURCES.items():
         
         # 清除摘要中多餘的 HTML 標籤，保留前 150 字純文字
         if '<' in summary:
-            import re
             summary = re.sub(r'<[^>]+>', '', summary)
         summary = summary.strip()[:150]
         
@@ -71,10 +72,12 @@ for source_name, url in RSS_SOURCES.items():
             INSERT OR IGNORE INTO filtered_news (title, summary, source, image_url, link, pub_date, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (title, summary, source_name, img_url, link, today_str, today_str))
+            inserted_count += 1
         except Exception as e:
             print(f"寫入失敗: {e}")
 
 conn.commit()
+print(f"本次掃描結束，嘗試寫入/更新了 {inserted_count} 則新聞。")
 
 # 4. 生成 HTML 網頁
 os.makedirs("archive", exist_ok=True)
@@ -86,9 +89,9 @@ tmpl = Template(template_html)
 
 # 撈出資料庫裡所有存在的日期列表
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]
+all_dates = [row[0] for row in cursor.fetchall()]  # 🌟 修正：確保提取出純字串 ['2026-09-08']
 
-print(f"目前資料庫中擁有的日期：{all_dates}")
+print(f"【偵錯資訊】目前資料庫中擁有的日期群：{all_dates}")
 
 if not all_dates:
     all_dates = [today_str]
@@ -103,6 +106,7 @@ for date_str in all_dates:
     """, (date_str,))
     rows = cursor.fetchall()
     
+    # 🌟 修正：將 Tuple 完美解包轉為 Dict 字典格式，供 HTML 網頁正確讀取
     news_list = []
     for r in rows:
         news_list.append({
@@ -114,6 +118,7 @@ for date_str in all_dates:
             "pub_date": r[5]
         })
     
+    print(f"【偵錯資訊】日期 {date_str} 成功撈出 {len(news_list)} 則新聞，準備渲染網頁...")
     rendered_html = tmpl.render(news_list=news_list, date_list=all_dates)
     
     # 寫入歷史存檔
