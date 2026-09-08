@@ -114,6 +114,8 @@ for source_name, url in RSS_SOURCES.items():
             img_url = entry.enclosures[0].get('url', '')
         elif 'media_content' in entry and len(entry.media_content) > 0:
             img_url = entry.media_content[0].get('url', '')
+        elif 'image' in entry and len(entry.image) > 0:
+            img_url = entry.image[0].get('url', '')
         elif 'links' in entry:
             for l in entry.links:
                 if 'image' in l.get('type', ''):
