@@ -23,16 +23,19 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 2. 🌟 核心調整：全面改用 RSSHub 提供的台灣主流媒體「乾淨、無阻擋」訂閱源
+# 2. 🌟 終極修正：放棄被封鎖的官方網域，改用社群運作的可用「RSSHub 鏡像替代通道」
+# 這裡使用常見的 RSSHub 穩定鏡像域名：rsshub.feedland.space
+MIRROR_DOMAIN = "https://feedland.space"
+
 RSS_SOURCES = {
-    "ETtoday 新聞雲": "https://rsshub.app",
-    "自由時報電子報": "https://rsshub.app",
-    "科技新報 (RSSHub)": "https://rsshub.app",
-    "風傳媒": "https://rsshub.app"
+    "ETtoday 新聞雲": f"{MIRROR_DOMAIN}/ettoday/news",
+    "自由時報電子報": f"{MIRROR_DOMAIN}/ltn/breakingnews",
+    "科技新報": f"{MIRROR_DOMAIN}/technews",
+    "風傳媒": f"{MIRROR_DOMAIN}/storm/all"
 }
 
-# 3. 抓取新聞 (不需 Playwright，改用乾淨 API 直接下載)
-print("開始透過 RSSHub 潔淨通道抓取新聞...")
+# 3. 抓取新聞
+print("開始透過 RSSHub 社群替代通道抓取新聞...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 inserted_count = 0
 
@@ -40,14 +43,18 @@ for source_name, url in RSS_SOURCES.items():
     print(f"正在連線抓取: {source_name}")
     
     try:
-        # 偽裝瀏覽器請求
+        # 加強偽裝成完全真實的桌面版 Chrome 瀏覽器標頭
         req = urllib.request.Request(
             url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/xml,text/xml,application/xhtml+xml',
+                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
         )
         
-        # 讀取乾淨的 XML 資料
-        with urllib.request.urlopen(req, timeout=15) as response:
+        # 讀取 XML 資料
+        with urllib.request.urlopen(req, timeout=20) as response:
             rss_text = response.read()
             
         feed = feedparser.parse(rss_text)
@@ -71,12 +78,12 @@ for source_name, url in RSS_SOURCES.items():
         
         link = entry.link
         
-        # 精準提取 RSSHub 中的縮圖網址
+        # 精準提取縮圖網址
         img_url = ""
         if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures[0].get('url', '')
+            img_url = entry.enclosures.get('url', '')
         elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content[0].get('url', '')
+            img_url = entry.media_content.get('url', '')
             
         try:
             cursor.execute("""
@@ -98,7 +105,7 @@ with open("templates/index.html", "r", encoding="utf-8") as f:
 tmpl = Template(template_html)
 
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]
+all_dates = [row for row in cursor.fetchall()]
 
 print(f"【資料庫日期群】: {all_dates}")
 
@@ -118,12 +125,12 @@ for date_str in all_dates:
     news_list = []
     for r in rows:
         news_list.append({
-            "title": r[0],
-            "summary": r[1],
-            "source": r[2],
-            "image_url": r[3],
-            "link": r[4],
-            "pub_date": r[5]
+            "title": r,
+            "summary": r,
+            "source": r,
+            "image_url": r,
+            "link": r,
+            "pub_date": r
         })
     
     rendered_html = tmpl.render(news_list=news_list, date_list=all_dates)
@@ -133,7 +140,7 @@ for date_str in all_dates:
         f.write(rendered_html)
         
     # 同步覆蓋 index.html 作為最新首頁
-    if date_str == all_dates[0]:
+    if date_str == all_dates:
         with open("index.html", "w", encoding="utf-8") as f_index:
             f_index.write(rendered_html)
 
