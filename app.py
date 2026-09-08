@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 import feedparser
 import re
+import urllib.request
 from jinja2 import Template
 
 # 1. 初始化資料庫
@@ -37,10 +38,27 @@ inserted_count = 0
 
 for source_name, url in RSS_SOURCES.items():
     print(f"正在抓取: {source_name}")
-    feed = feedparser.parse(url)
+    
+    try:
+        # 🌟 核心修正：偽裝成 Chrome 瀏覽器發出請求，防止被媒體網站 403 阻擋
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        )
+        
+        # 讀取 RSS 文字內容
+        with urllib.request.urlopen(req, timeout=15) as response:
+            rss_html = response.read()
+            
+        # 讓 feedparser 解析下載下來的文字
+        feed = feedparser.parse(rss_html)
+        
+    except Exception as http_err:
+        print(f"❌ 網路連線或下載失敗 {source_name}: {http_err}")
+        continue
     
     if not feed.entries:
-        print(f"警告：無法讀取 {source_name} 的 RSS")
+        print(f"警告：解析後發現無內容 {source_name}")
         continue
         
     for entry in feed.entries[:15]:  # 每次抓各媒體最新 15 則
@@ -54,7 +72,7 @@ for source_name, url in RSS_SOURCES.items():
         
         link = entry.link
         
-        # 尋找 RSS 中的圖片網址 (擴充多種媒體常用的標籤格式)
+        # 尋找 RSS 中的圖片網址
         img_url = ""
         if 'enclosures' in entry and len(entry.enclosures) > 0:
             img_url = entry.enclosures[0].get('url', '')
@@ -89,7 +107,7 @@ tmpl = Template(template_html)
 
 # 撈出資料庫裡所有存在的日期列表
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]  # 🌟 修正：確保提取出純字串 ['2026-09-08']
+all_dates = [row[0] for row in cursor.fetchall()]
 
 print(f"【偵錯資訊】目前資料庫中擁有的日期群：{all_dates}")
 
@@ -106,7 +124,6 @@ for date_str in all_dates:
     """, (date_str,))
     rows = cursor.fetchall()
     
-    # 🌟 修正：將 Tuple 完美解包轉為 Dict 字典格式，供 HTML 網頁正確讀取
     news_list = []
     for r in rows:
         news_list.append({
