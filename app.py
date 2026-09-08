@@ -145,7 +145,7 @@ for source_name, url in RSS_SOURCES.items():
             ai_label = ai_data.get("label", "正常")
             if "網群" in ai_label:
                 ai_label = "網軍"
-        except Exception:
+        except Exception as e:
             print(f"   ⚠️ AI 判讀受限，已發動異常保底機制: {title[:12]}...")
             ai_label = "AI異常"
 
