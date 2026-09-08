@@ -13,20 +13,39 @@ from string import Template
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
-# 強制抹除舊資料庫，啟動全新冷啟動
-if os.path.exists("news.db"):
+# 🌟 核心修正：首先讀取外部 app.config，判定是否啟動強制抹除資料庫
+config_path = "app.config"
+force_reset_db = False
+
+if os.path.exists(config_path):
+    with open(config_path, "r", encoding="utf-8") as cfg_f:
+        config_data = json.load(cfg_f)
+    RSS_SOURCES = config_data.get("RSS_SOURCES", {})
+    AI_PROMPT = config_data.get("AI_PROMPT", "")
+    force_reset_db = config_data.get("FORCE_RESET_DB", False)
+    print("📁 成功自建入外部 app.config 核心配置參數！")
+else:
+    # 保底防呆機制
+    RSS_SOURCES = {"ETtoday 新聞雲": "https://ettoday.net"}
+    AI_PROMPT = "分析新聞並輸出 JSON：\n{\"label\": \"葉配/網軍/正常\"}\n內容："
+    print("⚠️ 警告：未找到 app.config，已自動發動內建保底參數。")
+
+# 🌟 核心修正：依據 config 參數判定是否在雲端直接炸掉舊資料庫
+if force_reset_db and os.path.exists("news.db"):
     try:
         os.remove("news.db")
-        print("💥 已強制抹除舊的 news.db 資料庫，啟動全新乾淨大抓取！")
+        print("💥 FORCE_RESET_DB 已開啟！已強制抹除舊的 news.db 資料庫，啟動全新乾淨大抓取！")
     except Exception as e:
         print(f"抹除資料庫失敗: {e}")
+elif not force_reset_db:
+    print("🔒 FORCE_RESET_DB 已關閉！進入正常累積模式（僅抓取並新增未重複之最新新聞）。")
 
 # 1. 初始化 AI 客戶端
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# 2. 初始化全新資料庫
+# 2. 初始化資料庫（若被抹除則會重新建立空白檔案）
 conn = sqlite3.connect("news.db")
 conn.row_factory = sqlite3.Row  
 cursor = conn.cursor()
@@ -51,20 +70,6 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# 主流媒體官方原廠 RSS 網址
-RSS_SOURCES = {
-    "ETtoday 新聞雲": "https://feedburner.com",
-    "自由時報電子報": "https://ltn.com.tw",
-    "科技新報": "https://technews.tw",
-    "風傳媒": "https://storm.mg"
-}
-
-AI_PROMPT = """
-你是一個新聞審查員。請分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
-{"label": "葉配/網軍/正常"}
-新聞內容如下：
-"""
-
 print("開始下載新聞源並執行深度圖片正則提取...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 inserted_count = 0
@@ -76,30 +81,44 @@ for source_name, url in RSS_SOURCES.items():
     try:
         req = urllib.request.Request(
             url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/xml,text/xml,application/xhtml+xml,text/html;q=0.9'
+            }
         )
         with urllib.request.urlopen(req, timeout=25, context=ssl_context) as response:
             rss_bytes = response.read()
-        feed = feedparser.parse(rss_bytes)
+        
+        rss_text = rss_bytes.decode('utf-8', errors='ignore')
+        feed = feedparser.parse(rss_text)
+        
     except Exception as http_err:
         print(f"❌ 網路連線失敗 {source_name}: {http_err}")
         continue
     
+    print(f"   -> 成功下載！該媒體當前 RSS 內包含 {len(feed.entries)} 則新聞。")
     if not feed.entries:
         continue
         
-    for entry in feed.entries[:15]:  # 每次各抓 15 則
+    for entry in feed.entries[:15]:
         title = entry.title
-        raw_description = entry.get('summary', '')
+        raw_description = entry.get('summary', entry.get('description', ''))
         
-        # 精準對齊 ETtoday 的 channel/item/image 階層抓取
+        # 精準匹配標準 RSS 中的圖片階層格式
         img_url = ""
         if 'image' in entry:
-            img_url = entry.get('image', '')
-            if isinstance(img_url, dict) and 'href' in img_url:
-                img_url = img_url['href']
+            img_data = entry.get('image', '')
+            if isinstance(img_data, dict) and 'href' in img_data:
+                img_url = img_data['href']
+            elif isinstance(img_data, str):
+                img_url = img_data
         
-        # 保底正則提取
+        if not img_url and 'enclosures' in entry and len(entry.enclosures) > 0:
+            img_url = entry.enclosures.get('url', '')
+        elif not img_url and 'media_content' in entry and len(entry.media_content) > 0:
+            img_url = entry.media_content.get('url', '')
+        
+        # 保底正則：深入內文描述抓取 <img> 標籤
         if not img_url and '<img' in raw_description:
             img_match = re.search(r'src=["\'](https?://[^"\']+\.(?:jpg|jpeg|png|gif|webp|JPG))["\']', raw_description, re.IGNORECASE)
             if img_match:
@@ -112,13 +131,12 @@ for source_name, url in RSS_SOURCES.items():
         summary = summary.strip()[:150]
         
         link = entry.link
-        pub_date_str = entry.get('published', today_str)
+        pub_date_str = entry.get('published', entry.get('pubDate', today_str))
         
         # 🤖 呼叫 Gemini AI 進行 JSON 判讀
         ai_label = "正常"
         try:
-            # 每次呼叫 AI 前冷卻 3.5 秒，精確防止觸發免費版頻率限制
-            time.sleep(3.5) 
+            time.sleep(3.5) # 防止觸發免費版頻率限制
             response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
             raw_text = response.text.strip()
             raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
@@ -127,9 +145,8 @@ for source_name, url in RSS_SOURCES.items():
             ai_label = ai_data.get("label", "正常")
             if "網群" in ai_label:
                 ai_label = "網軍"
-        except Exception as ai_err:
-            # 🌟 核心修正：如果 AI 判讀超載或失敗，直接將標籤強制設為「AI異常」保底放行！
-            print(f"⚠️ AI 判讀受限，已發動異常保底機制: {title[:12]}...")
+        except Exception:
+            print(f"   ⚠️ AI 判讀受限，已發動異常保底機制: {title[:12]}...")
             ai_label = "AI異常"
 
         # 寫入或更新
@@ -147,7 +164,7 @@ for source_name, url in RSS_SOURCES.items():
                 updated_count += 1
 
 conn.commit()
-print(f"📊 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
+print(f" Bars 📊 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
 
 # 4. 讀取樣式模板並渲染出全新網頁
 with open("template.html", "r", encoding="utf-8") as f:
@@ -191,7 +208,6 @@ for date_str in all_dates:
         elif label_text == "網軍":
             label_badge = '<span class="badge-label label-wj">🔴 網軍風向</span>'
         else:
-            # 🌟 補上網頁卡片端「AI異常」的科技灰標籤呈現
             label_badge = '<span class="badge-label label-err">⚪ AI異常</span>'
 
         cards_html += f"""
@@ -226,7 +242,6 @@ for date_str in all_dates:
         news_cards=cards_html
     )
 
-    # 寫入靜態網頁
     with open("index.html" if date_str == today_str else f"archive/{date_str}.html", "w", encoding="utf-8") as f_out:
         f_out.write(full_webpage)
     
