@@ -19,7 +19,7 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 2. 初始化資料庫
 conn = sqlite3.connect("news.db")
-conn.row_factory = sqlite3.Row
+conn.row_factory = sqlite3.Row  
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -58,6 +58,8 @@ AI_PROMPT = """
 
 print("開始下載新聞源並執行深度圖片正則提取...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+inserted_count = 0
+updated_count = 0
 ssl_context = ssl._create_unverified_context()
 
 for source_name, url in RSS_SOURCES.items():
@@ -80,15 +82,14 @@ for source_name, url in RSS_SOURCES.items():
         title = entry.title
         raw_description = entry.get('summary', '')
         
-        # 🌟 2. 修正：精準對齊 ETtoday 的 channel/item/image 階層抓取
+        # 🌟 精準對齊 ETtoday 的 channel/item/image 階層抓取
         img_url = ""
-        # feedparser 會將 item 底下的 <image> 標籤映射到 entry.get('image') 或 entry.get('image_url')
         if 'image' in entry:
             img_url = entry.get('image', '')
             if isinstance(img_url, dict) and 'href' in img_url:
                 img_url = img_url['href']
         
-        # 保底正則：如果 XML 欄位沒撈到，直接進 description 內部的 HTML 代碼挖出 <img src="...">
+        # 保底正則提取
         if not img_url and '<img' in raw_description:
             img_match = re.search(r'src=["\'](https?://[^"\']+\.(?:jpg|jpeg|png|gif|webp|JPG))["\']', raw_description, re.IGNORECASE)
             if img_match:
@@ -99,7 +100,10 @@ for source_name, url in RSS_SOURCES.items():
         if '<' in summary:
             summary = re.sub(r'<[^>]+>', '', summary)
         summary = summary.strip()[:150]
+        
         link = entry.link
+        # 🌟 修正：確保提取正確的發布時間格式字串
+        pub_date_str = entry.get('published', today_str)
         
         # 🤖 AI 標籤判讀
         ai_label = "正常"
@@ -115,19 +119,24 @@ for source_name, url in RSS_SOURCES.items():
         except Exception:
             pass
 
+        # 🌟 修正：確保 inserted_count 與 updated_count 計數器位置完全精確
         try:
             cursor.execute("""
             INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, ai_label, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (title, summary, source_name, img_url, link, today_str, ai_label, today_str))
+            """, (title, summary, source_name, img_url, link, pub_date_str, ai_label, today_str))
+            inserted_count += 1
         except sqlite3.IntegrityError:
             cursor.execute("""
             UPDATE filtered_news SET ai_label = ? WHERE title = ? AND ai_label = '正常'
             """, (ai_label, title))
+            if cursor.rowcount > 0:
+                updated_count += 1
 
 conn.commit()
+print(f"📊 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
 
-# 4. 🌟 讀取樣式模板並渲染出全新網頁
+# 4. 讀取樣式模板並渲染出全新網頁
 with open("template.html", "r", encoding="utf-8") as f:
     template_content = f.read()
 html_template = Template(template_content)
@@ -138,13 +147,11 @@ all_dates = [row['created_at'] for row in cursor.fetchall()]
 if not all_dates:
     all_dates = [today_str]
 
-# 🌟 1. 修正：日期導覽列網址結構更新為 /cleanNews/archive/...
 date_buttons = ""
 for d in all_dates:
     date_buttons += f'<a href="/cleanNews/archive/{d}.html" class="btn-date">{d}</a>'
 
 for date_str in all_dates:
-    # 🌟 3. 修正：輸出新聞時，強制使用 ORDER BY id DESC（日期最新降序排列）
     cursor.execute("""
         SELECT title, summary, source, image_url, link, pub_date, ai_label 
         FROM filtered_news 
@@ -215,4 +222,4 @@ for date_str in all_dates:
 cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < date('now', '-90 days')")
 conn.commit()
 conn.close()
-print("🎉 專屬專案網址 /cleanNews/、ETtoday 原創縮圖、最新降序排序已全數完美修正成功！")
+print("🎉 網頁與資料庫更新成功！")
