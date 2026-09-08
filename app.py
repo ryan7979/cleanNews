@@ -7,10 +7,9 @@ import urllib.request
 import ssl
 import json
 import warnings
-# 🌟 核心修正：補上漏掉的 Jinja2 模板引入宣告
 from jinja2 import Template
 
-# 強制隱藏 Google 官方的 Deprecated 升級警告，保持日誌乾淨
+# 強制隱藏 Google 官方的 Deprecated 升級警告
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
@@ -38,18 +37,18 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位，徹底解決 no such column 報錯
+# 自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN reporter TEXT DEFAULT '編輯台'")
     conn.commit()
 except sqlite3.OperationalError:
-    pass  # 欄位已存在，安全跳過
+    pass
 
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN ai_label TEXT DEFAULT '正常'")
     conn.commit()
 except sqlite3.OperationalError:
-    pass  # 欄位已存在，安全跳過
+    pass
 
 
 # 3. 主流媒體官方原廠 RSS 網址
@@ -67,7 +66,7 @@ AI_PROMPT = """
 1. reporter: 請找出新聞的記者姓名（如：張三），若找不到或屬於編譯/社群中心，請填「編輯台」。
 2. label: 請從以下三個標籤中，精準選擇一個：
    - 「葉配」：明顯替特定廠商、建案、醫美、產品宣傳、開箱體驗、缺乏客觀新聞價值者。
-   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引引導網民情緒、事實根據不足的政治口水文。
+   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引導網民情緒、事實根據不足的政治口水文。
    - 「正常」：客觀客觀的國內外大事、科技趨勢、社會新聞、公共政策探討。
 
 【輸出限制】
@@ -80,6 +79,7 @@ AI_PROMPT = """
 print("開始透過官方正宗源下載新聞並進行 AI 判讀...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 inserted_count = 0
+updated_count = 0
 ssl_context = ssl._create_unverified_context()
 
 for source_name, url in RSS_SOURCES.items():
@@ -131,8 +131,6 @@ for source_name, url in RSS_SOURCES.items():
         try:
             response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
             raw_text = response.text.strip()
-            
-            # 清除可能被 AI 誤加的 markdown 包裝
             raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
             
             ai_data = json.loads(raw_text)
@@ -141,19 +139,28 @@ for source_name, url in RSS_SOURCES.items():
             if "網群" in ai_label:
                 ai_label = "網軍"
         except Exception as ai_err:
-            pass
+            # 🌟 保底機制：AI 失敗不阻擋，沿用預設值放行
+            print(f"AI 判讀異常，啟動防護放行: {ai_err}")
 
+        # 🌟 核心修正：不論如何都先嘗試寫入。如果是新新聞，直接帶有判讀標籤。
         try:
             cursor.execute("""
-            INSERT OR IGNORE INTO filtered_news (title, summary, source, image_url, link, pub_date, reporter, ai_label, created_at)
+            INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, reporter, ai_label, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (title, summary, source_name, img_url, link, today_str, reporter, ai_label, today_str))
             inserted_count += 1
-        except Exception as e:
-            pass
+        except sqlite3.IntegrityError:
+            # 🌟 核心修正：如果是舊新聞（已存在），強迫更新其 AI 標籤與記者欄位，防止舊資料沒被判讀到
+            cursor.execute("""
+            UPDATE filtered_news 
+            SET reporter = ?, ai_label = ? 
+            WHERE title = ? AND (reporter = '編輯台' AND ai_label = '正常')
+            """, (reporter, ai_label, title))
+            if cursor.rowcount > 0:
+                updated_count += 1
 
 conn.commit()
-print(f"本次掃描結束！成功 AI 判讀並寫入 {inserted_count} 則新聞。")
+print(f"掃描結束！新增了 {inserted_count} 則新聞，回頭幫 {updated_count} 則舊新聞補上了 AI 標籤。")
 
 # 4. 生成 HTML 網頁
 os.makedirs("archive", exist_ok=True)
@@ -163,7 +170,7 @@ with open("templates/index.html", "r", encoding="utf-8") as f:
 tmpl = Template(template_html)
 
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row[0] for row in cursor.fetchall()]
+all_dates = [row[0] for row in cursor.fetchall()]  # 🌟 修正：確保提取出純字串陣列
 
 print(f"【資料庫歷史日期群】: {all_dates}")
 
