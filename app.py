@@ -7,8 +7,10 @@ import urllib.request
 import ssl
 import json
 import warnings
+# 🌟 核心修正：補上漏掉的 Jinja2 模板引入宣告
+from jinja2 import Template
 
-# 🌟 核心修正：強制隱藏 Google 官方討厭的 Deprecated 升級警告，保持日誌乾淨
+# 強制隱藏 Google 官方的 Deprecated 升級警告，保持日誌乾淨
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
@@ -36,7 +38,7 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 🌟 核心防護：自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位，徹底解決 no such column 報錯
+# 自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位，徹底解決 no such column 報錯
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN reporter TEXT DEFAULT '編輯台'")
     conn.commit()
@@ -65,7 +67,7 @@ AI_PROMPT = """
 1. reporter: 請找出新聞的記者姓名（如：張三），若找不到或屬於編譯/社群中心，請填「編輯台」。
 2. label: 請從以下三個標籤中，精準選擇一個：
    - 「葉配」：明顯替特定廠商、建案、醫美、產品宣傳、開箱體驗、缺乏客觀新聞價值者。
-   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引導網民情緒、事實根據不足的政治口水文。
+   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引引導網民情緒、事實根據不足的政治口水文。
    - 「正常」：客觀客觀的國內外大事、科技趨勢、社會新聞、公共政策探討。
 
 【輸出限制】
@@ -104,9 +106,9 @@ for source_name, url in RSS_SOURCES.items():
         # 尋找並還原被隱藏的新聞圖片網址
         img_url = ""
         if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures[0].get('url', '')
+            img_url = entry.enclosures.get('url', '')
         elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content[0].get('url', '')
+            img_url = entry.media_content.get('url', '')
         elif 'links' in entry:
             for l in entry.links:
                 if 'image' in l.get('type', ''):
