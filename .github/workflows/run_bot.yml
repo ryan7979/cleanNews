@@ -23,15 +23,11 @@ jobs:
     - name: 安裝相依套件
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install feedparser jinja2
 
-    # 🌟 核心修正：改用 python -m playwright install 下載正確的 Chromium 核心
-    - name: 安裝 Playwright 瀏覽器核心
-      run: python -m playwright install chromium
+    # 🌟 已經移除笨重的 Playwright 瀏覽器安裝步驟，速度極快
 
-    - name: 執行 AI 新聞過濾與網頁生成
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    - name: 執行新聞過濾與網頁生成
       run: python app.py
 
     - name: 自動將新網頁與資料庫 Commit 並推回 GitHub
