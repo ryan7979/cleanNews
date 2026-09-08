@@ -6,12 +6,16 @@ import re
 import urllib.request
 import ssl
 import json
-from google import genai # 🌟 升級為 2026 最新 Google Gen AI SDK
-from jinja2 import Template
+import warnings
+
+# 🌟 核心修正：強制隱藏 Google 官方討厭的 Deprecated 升級警告，保持日誌乾淨
+warnings.filterwarnings("ignore", category=FutureWarning)
+import google.generativeai as genai
 
 # 1. 初始化 AI 客戶端
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 2. 初始化資料庫並啟動「自動補欄位防護」
 conn = sqlite3.connect("news.db")
@@ -32,18 +36,18 @@ CREATE TABLE IF NOT EXISTS filtered_news (
 """)
 conn.commit()
 
-# 🌟 核心修正：檢查並動態升級舊資料庫，防止 no such column 錯誤
+# 🌟 核心防護：自動幫舊資料庫升級補齊 reporter 與 ai_label 欄位，徹底解決 no such column 報錯
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN reporter TEXT DEFAULT '編輯台'")
     conn.commit()
 except sqlite3.OperationalError:
-    pass  # 代表欄位已存在，跳過
+    pass  # 欄位已存在，安全跳過
 
 try:
     cursor.execute("ALTER TABLE filtered_news ADD COLUMN ai_label TEXT DEFAULT '正常'")
     conn.commit()
 except sqlite3.OperationalError:
-    pass  # 代表欄位已存在，跳過
+    pass  # 欄位已存在，安全跳過
 
 
 # 3. 主流媒體官方原廠 RSS 網址
@@ -55,17 +59,17 @@ RSS_SOURCES = {
 }
 
 AI_PROMPT = """
-你是一個犀利的新聞政治與商業審查員。請嚴格分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
+你是一個新聞政治與商業審查員。請分析以下新聞的標題與摘要，並輸出嚴格的 JSON 格式。
 
 【判定定義】
 1. reporter: 請找出新聞的記者姓名（如：張三），若找不到或屬於編譯/社群中心，請填「編輯台」。
 2. label: 請從以下三個標籤中，精準選擇一個：
    - 「葉配」：明顯替特定廠商、建案、醫美、產品宣傳、開箱體驗、缺乏客觀新聞價值者。
-   - 「網群」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引導網民情緒、缺乏事實根據的政治口水文。
+   - 「網軍」：帶有強烈政治公關帶風向、刻意抹黑、刻意造神、特定派系打手、引導網民情緒、事實根據不足的政治口水文。
    - 「正常」：客觀客觀的國內外大事、科技趨勢、社會新聞、公共政策探討。
 
 【輸出限制】
-必須只輸出標準 JSON 格式，不要有任何 Markdown 的 ```json 標籤，不要有廢話。格式如下：
+必須只輸出標準 JSON 格式，不要有任何 Markdown 的 ```json 標籤，格式如下：
 {"reporter": "記者名字", "label": "葉配/網軍/正常"}
 
 新聞內容如下：
@@ -100,9 +104,9 @@ for source_name, url in RSS_SOURCES.items():
         # 尋找並還原被隱藏的新聞圖片網址
         img_url = ""
         if 'enclosures' in entry and len(entry.enclosures) > 0:
-            img_url = entry.enclosures.get('url', '')
+            img_url = entry.enclosures[0].get('url', '')
         elif 'media_content' in entry and len(entry.media_content) > 0:
-            img_url = entry.media_content.get('url', '')
+            img_url = entry.media_content[0].get('url', '')
         elif 'links' in entry:
             for l in entry.links:
                 if 'image' in l.get('type', ''):
@@ -119,28 +123,23 @@ for source_name, url in RSS_SOURCES.items():
         summary = summary.strip()[:150]
         link = entry.link
         
-        # 🤖 呼叫最新 2026 Gemini 1.5 Flash API 進行 JSON 判讀
+        # 🤖 呼叫 Gemini AI 進行 JSON 判讀
         reporter = "編輯台"
         ai_label = "正常"
         try:
-            # 🌟 新版 SDK 的呼叫語法
-            response = client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=AI_PROMPT + f"標題:{title}\n摘要:{summary}"
-            )
-            
-            # 清理可能被 AI 誤加的 markdown 包裝
+            response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
             raw_text = response.text.strip()
+            
+            # 清除可能被 AI 誤加的 markdown 包裝
             raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
             
             ai_data = json.loads(raw_text)
             reporter = ai_data.get("reporter", "編輯台")
             ai_label = ai_data.get("label", "正常")
-            # 防呆標籤對齊
-            if "網群" in ai_label or "網軍" in ai_label:
+            if "網群" in ai_label:
                 ai_label = "網軍"
         except Exception as ai_err:
-            print(f"AI 判讀失敗: {ai_err}")
+            pass
 
         try:
             cursor.execute("""
@@ -162,9 +161,9 @@ with open("templates/index.html", "r", encoding="utf-8") as f:
 tmpl = Template(template_html)
 
 cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row for row in cursor.fetchall()]
+all_dates = [row[0] for row in cursor.fetchall()]
 
-print(f"【資料庫日期群】: {all_dates}")
+print(f"【資料庫歷史日期群】: {all_dates}")
 
 if not all_dates:
     all_dates = [today_str]
@@ -181,8 +180,8 @@ for date_str in all_dates:
     news_list = []
     for r in rows:
         news_list.append({
-            "title": r, "summary": r, "source": r, "image_url": r,
-            "link": r, "pub_date": r, "reporter": r, "ai_label": r
+            "title": r[0], "summary": r[1], "source": r[2], "image_url": r[3],
+            "link": r[4], "pub_date": r[5], "reporter": r[6], "ai_label": r[7]
         })
     
     rendered_html = tmpl.render(news_list=news_list, date_list=all_dates)
