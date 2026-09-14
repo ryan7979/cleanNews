@@ -28,11 +28,13 @@ jobs:
     - name: 執行 AI 新聞過濾與網頁生成
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: python app.py
+      run: |
+        python -c "import json, os; json.dump({'GEMINI_API_KEY': os.environ['GEMINI_API_KEY']}, open('app.local.config', 'w', encoding='utf-8'))"
+        python app.py
 
     - name: 自動將新網頁與資料庫 Commit 並推回 GitHub
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add news.db index.html archive/*.html || true
+        git add news.db index.html archive/*.html app_exe.log || true
         git diff --quiet && git diff --staged --quiet || (git commit -m "自動更新新聞牆" && git push)

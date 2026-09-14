@@ -8,40 +8,58 @@ import ssl
 import json
 import warnings
 import time
+import sys
+from email.utils import parsedate_to_datetime
 from google import genai
 from google.genai import types
 from string import Template
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# 🌟 核心修正：首先讀取外部 app.config，判定是否啟動強制抹除資料庫
-config_path = "app.config"
-force_reset_db = False
+APP_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_exe.log")
 
-if os.path.exists(config_path):
+
+class Tee:
+    def __init__(self, console, log_file):
+        self.console = console
+        self.log_file = log_file
+
+    def write(self, message):
+        self.console.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()
+
+    def flush(self):
+        self.console.flush()
+        self.log_file.flush()
+
+
+app_log_file = open(APP_LOG, "w", encoding="utf-8", buffering=1)
+sys.stdout = Tee(sys.__stdout__, app_log_file)
+sys.stderr = Tee(sys.__stderr__, app_log_file)
+print(f"Application execution started: {datetime.datetime.now().isoformat()}")
+
+# 讀取外部 app.config；設定缺失或格式錯誤時直接中止。
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.config")
+try:
     with open(config_path, "r", encoding="utf-8") as cfg_f:
         config_data = json.load(cfg_f)
+    if not isinstance(config_data, dict):
+        raise ValueError("app.config 必須是 JSON object")
+
     RSS_SOURCES = config_data.get("RSS_SOURCES", {})
     AI_PROMPT = config_data.get("AI_PROMPT", "")
     AI_API_URL = config_data.get("AI_API_URL", "https://generativelanguage.googleapis.com")
-    AI_MODEL = config_data.get("AI_MODEL", "gemini-3.6-flash")
+    AI_MODEL = config_data.get("AI_MODEL", "gemini-2.5-flash")
     AI_TIMEOUT_SECONDS = config_data.get("AI_TIMEOUT_SECONDS", 60)
     AI_MAX_RETRIES = config_data.get("AI_MAX_RETRIES", 2)
     AI_MAX_TOKENS = config_data.get("AI_MAX_TOKENS", 2048)
     MAX_NEWS_TOTAL = config_data.get("MAX_NEWS_TOTAL", 15)
     force_reset_db = config_data.get("FORCE_RESET_DB", False)
     print("📁 成功自建入外部 app.config 核心配置參數！")
-else:
-    # 保底防呆機制
-    RSS_SOURCES = {"ETtoday 新聞雲": "https://ettoday.net"}
-    AI_PROMPT = "分析新聞並輸出 JSON。分類為：葉配、網軍、垃圾新聞或正常。垃圾新聞是轉載網路網紅、名嘴的個人意見，缺乏獨立採訪或實質新聞資訊。\n內容："
-    AI_API_URL = "https://generativelanguage.googleapis.com"
-    AI_MODEL = "gemini-3.6-flash"
-    AI_TIMEOUT_SECONDS = 60
-    AI_MAX_RETRIES = 2
-    AI_MAX_TOKENS = 2048
-    MAX_NEWS_TOTAL = 15
-    print("⚠️ 警告：未找到 app.config，已自動發動內建保底參數。")
+except Exception as error:
+    print(f"[ERROR] 外部 app.config 讀取失敗: {error}", file=sys.stderr)
+    raise
 
 # 🌟 核心修正：依據 config 參數判定是否在雲端直接炸掉舊資料庫
 if force_reset_db and os.path.exists("news.db"):
@@ -54,36 +72,56 @@ elif not force_reset_db:
     print("🔒 FORCE_RESET_DB 已關閉！進入正常累積模式（僅抓取並新增未重複之最新新聞）。")
 
 # 1. 初始化 Gemini AI 設定
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY and os.name == "nt":
-    try:
-        import winreg
-
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as user_environment:
-            GEMINI_API_KEY = winreg.QueryValueEx(user_environment, "GEMINI_API_KEY")[0]
-    except (FileNotFoundError, OSError):
-        pass
+local_config_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "app.local.config"
+)
+GEMINI_API_KEY = ""
+if os.path.exists(local_config_path):
+    with open(local_config_path, "r", encoding="utf-8") as local_cfg_f:
+        local_config_data = json.load(local_cfg_f)
+    GEMINI_API_KEY = local_config_data.get("GEMINI_API_KEY", "").strip()
 
 ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+AI_OUTPUT_LOG = APP_LOG
+with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+    log_file.write("\nAI API call log begins\n")
 
 
-def request_ai_content(prompt):
+def request_ai_content(prompt, source_name):
+    with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+        log_file.write(
+            f"\n\n===== RSS來源: {source_name} =====\n"
+            f"[INPUT]\n{prompt}\n"
+        )
+
     if not ai_client:
-        raise RuntimeError("GEMINI_API_KEY 未設定")
+        error_message = "GEMINI_API_KEY 未設定"
+        with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+            log_file.write(f"[ERROR]\n{error_message}\n===== END =====\n")
+        raise RuntimeError(error_message)
 
     for attempt in range(AI_MAX_RETRIES + 1):
         try:
-            response = ai_client.models.generate_content(
+            chat = ai_client.chats.create(
                 model=AI_MODEL,
-                contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.2,
                     max_output_tokens=AI_MAX_TOKENS,
                     response_mime_type="application/json",
                 ),
             )
-            return (response.text or "").strip()
+            response = chat.send_message(message=prompt)
+            output = (response.text or "").strip()
+            with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+                log_file.write(f"[AI OUTPUT]\n{output}\n===== END =====\n")
+            return output
         except Exception as error:
+            error_message = str(error)
+            with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+                log_file.write(
+                    f"[ERROR - attempt {attempt + 1}]\n"
+                    f"{error_message}\n"
+                )
             error_text = str(error).lower()
             transient_error = (
                 "429" in error_text
@@ -103,7 +141,20 @@ def request_ai_content(prompt):
             print(f"   -> Gemini API 暫時無法服務，{delay} 秒後重試...", flush=True)
             time.sleep(delay)
 
-    raise RuntimeError("Gemini API request failed")
+    error_message = "Gemini API request failed"
+    with open(AI_OUTPUT_LOG, "a", encoding="utf-8") as log_file:
+        log_file.write(f"{error_message}\n===== END =====\n")
+    raise RuntimeError(error_message)
+
+
+def parse_news_date(value):
+    try:
+        parsed_date = parsedate_to_datetime(value)
+        if parsed_date.tzinfo is None:
+            parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+        return parsed_date
+    except (TypeError, ValueError, OverflowError):
+        return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
 # 2. 初始化資料庫（若被抹除則會重新建立空白檔案）
 conn = sqlite3.connect("news.db")
@@ -232,7 +283,7 @@ for source_name, url in RSS_SOURCES.items():
             '[{"index": 0, "label": "正常"}]\n'
             f"新聞清單：{json.dumps(batch_items, ensure_ascii=False)}"
         )
-        raw_text = request_ai_content(batch_prompt)
+        raw_text = request_ai_content(batch_prompt, source_name)
 
         print(f"   -> Gemini 批次回應: {raw_text[:120]}...")
 
@@ -299,9 +350,12 @@ for date_str in all_dates:
         SELECT title, summary, source, image_url, link, pub_date, ai_label 
         FROM filtered_news 
         WHERE created_at = ? 
-        ORDER BY id DESC
     """, (date_str,))
-    news_rows = cursor.fetchall()
+    news_rows = sorted(
+        cursor.fetchall(),
+        key=lambda row: parse_news_date(row["pub_date"]),
+        reverse=True,
+    )
     
     cards_html = ""
     for r in news_rows:

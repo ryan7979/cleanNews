@@ -1,4 +1,6 @@
 .venv/
 .env
+app.local.config
+ai_output.log
 __pycache__/
 *.py[cod]
