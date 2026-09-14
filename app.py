@@ -9,6 +9,7 @@ import json
 import warnings
 import time
 import sys
+from html import unescape
 from email.utils import parsedate_to_datetime
 from google import genai
 from google.genai import types
@@ -156,6 +157,50 @@ def parse_news_date(value):
     except (TypeError, ValueError, OverflowError):
         return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
+
+def format_news_date(value):
+    try:
+        return parsedate_to_datetime(value).strftime("%Y/%m/%d %H:%M:%S")
+    except (TypeError, ValueError, OverflowError):
+        return value
+
+
+def extract_image_url(entry, raw_description):
+    fragments = [(raw_description, False)]
+    for content_item in entry.get("content", []):
+        if isinstance(content_item, dict):
+            fragments.append((content_item.get("value", ""), True))
+
+    for fragment, allow_direct_url in fragments:
+        if not fragment:
+            continue
+        image_url = ""
+        if re.search(r"<img\b", fragment, re.IGNORECASE):
+            img_match = re.search(
+                r'<img\b[^>]*\bsrc=["\']([^"\']+)["\']',
+                fragment,
+                re.IGNORECASE,
+            )
+            if img_match:
+                image_url = img_match.group(1)
+        if not image_url:
+            direct_url_match = re.search(
+                r'https?://[^\s<>"\'`]+\.(?:jpg|jpeg|png|gif|webp)(?:\?[^\s<>"\'`]*)?',
+                fragment,
+                re.IGNORECASE,
+            )
+            if direct_url_match:
+                image_url = direct_url_match.group(0)
+        if not image_url and allow_direct_url:
+            direct_urls = re.findall(r'https?://[^\s<>"\'`]+', fragment)
+            if direct_urls:
+                image_url = direct_urls[-1].rstrip(".,;:)]}")
+        if image_url:
+            image_url = unescape(image_url).strip().strip("`")
+            if image_url.startswith(("http://", "https://")):
+                return image_url
+    return ""
+
 # 2. 初始化資料庫（若被抹除則會重新建立空白檔案）
 conn = sqlite3.connect("news.db")
 conn.row_factory = sqlite3.Row  
@@ -234,11 +279,9 @@ for source_name, url in RSS_SOURCES.items():
         elif not img_url and 'media_content' in entry and len(entry.media_content) > 0:
             img_url = entry.media_content.get('url', '')
         
-        # 保底正則：深入內文描述抓取 <img> 標籤
-        if not img_url and '<img' in raw_description:
-            img_match = re.search(r'src=["\'](https?://[^"\']+\.(?:jpg|jpeg|png|gif|webp|JPG))["\']', raw_description, re.IGNORECASE)
-            if img_match:
-                img_url = img_match.group(1)
+        # 從 description 或 content:encoded 抓取 <img> 標籤
+        if not img_url:
+            img_url = extract_image_url(entry, raw_description)
 
         # 濾除新聞摘要中的所有 HTML 標籤
         summary = raw_description
@@ -279,7 +322,7 @@ for source_name, url in RSS_SOURCES.items():
         batch_prompt = (
             f"{AI_PROMPT}\n"
             "以下是多則新聞。請逐則分析，並只輸出 JSON 陣列；index 必須對應輸入順序，"
-            "label 只能是「葉配」、「網軍」、「垃圾新聞」或「正常」。垃圾新聞是轉載網路網紅、名嘴的個人意見，缺乏獨立採訪或實質新聞資訊。格式："
+            "label 只能是「葉配」、「網軍」、「垃圾新聞」或「正常」。格式："
             '[{"index": 0, "label": "正常"}]\n'
             f"新聞清單：{json.dumps(batch_items, ensure_ascii=False)}"
         )
@@ -380,7 +423,7 @@ for date_str in all_dates:
             label_badge = '<span class="badge-label label-err">⚪ AI異常</span>'
 
         cards_html += f"""
-            <div class="card" data-source="{r['source']}">
+            <div class="card" data-source="{r['source']}" data-label="{label_text}">
                 <div>
                     {img_tag}
                     <div class="meta-row">
@@ -395,7 +438,7 @@ for date_str in all_dates:
                     </div>
                 </div>
                 <div class="card-footer">
-                    <span class="news-date">🕒 {r['pub_date']}</span>
+                    <span class="news-date">🕒 {format_news_date(r['pub_date'])}</span>
                     <a href="{r['link']}" target="_blank" class="btn-link">
                         前往原文 <span class="arrow">→</span>
                     </a>
