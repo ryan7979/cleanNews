@@ -388,6 +388,8 @@ source_tags = '<button type="button" class="btn-tag active" data-filter="all">å…
 for source_name in RSS_SOURCES:
     source_tags += f'<button type="button" class="btn-tag" data-filter="{source_name}">{source_name}</button>'
 
+updated_at = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+
 for date_str in all_dates:
     cursor.execute("""
         SELECT title, summary, source, image_url, link, pub_date, ai_label 
@@ -452,7 +454,8 @@ for date_str in all_dates:
     full_webpage = html_template.substitute(
         date_buttons=date_buttons,
         source_tags=source_tags,
-        news_cards=cards_html
+        news_cards=cards_html,
+        updated_at=updated_at,
     )
 
     with open("index.html" if date_str == today_str else f"archive/{date_str}.html", "w", encoding="utf-8") as f_out:
