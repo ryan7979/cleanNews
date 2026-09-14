@@ -4,3 +4,7 @@ app.local.config
 ai_output.log
 __pycache__/
 *.py[cod]
+news.db
+archive/
+index.html
+app_exe.log
