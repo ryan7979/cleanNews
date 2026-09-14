@@ -32,9 +32,16 @@ jobs:
         python -c "import json, os; json.dump({'GEMINI_API_KEY': os.environ['GEMINI_API_KEY']}, open('app.local.config', 'w', encoding='utf-8'))"
         python app.py
 
-    - name: 自動將新網頁與資料庫 Commit 並推回 GitHub
+    - name: 準備 GitHub Pages 發布檔案
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add news.db index.html archive/*.html app_exe.log || true
-        git diff --quiet && git diff --staged --quiet || (git commit -m "自動更新新聞牆" && git push)
+        mkdir -p deploy/archive
+        cp index.html news.db deploy/
+        cp -R archive/. deploy/archive/
+
+    - name: 發布到 GitHub Pages gh-pages 分支
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_branch: gh-pages
+        publish_dir: ./deploy
+        force_orphan: true
