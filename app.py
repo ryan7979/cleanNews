@@ -8,10 +8,11 @@ import ssl
 import json
 import warnings
 import time
+from google import genai
+from google.genai import types
 from string import Template
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-import google.generativeai as genai
 
 # 🌟 核心修正：首先讀取外部 app.config，判定是否啟動強制抹除資料庫
 config_path = "app.config"
@@ -22,12 +23,24 @@ if os.path.exists(config_path):
         config_data = json.load(cfg_f)
     RSS_SOURCES = config_data.get("RSS_SOURCES", {})
     AI_PROMPT = config_data.get("AI_PROMPT", "")
+    AI_API_URL = config_data.get("AI_API_URL", "https://generativelanguage.googleapis.com")
+    AI_MODEL = config_data.get("AI_MODEL", "gemini-3.6-flash")
+    AI_TIMEOUT_SECONDS = config_data.get("AI_TIMEOUT_SECONDS", 60)
+    AI_MAX_RETRIES = config_data.get("AI_MAX_RETRIES", 2)
+    AI_MAX_TOKENS = config_data.get("AI_MAX_TOKENS", 2048)
+    MAX_NEWS_TOTAL = config_data.get("MAX_NEWS_TOTAL", 15)
     force_reset_db = config_data.get("FORCE_RESET_DB", False)
     print("📁 成功自建入外部 app.config 核心配置參數！")
 else:
     # 保底防呆機制
     RSS_SOURCES = {"ETtoday 新聞雲": "https://ettoday.net"}
-    AI_PROMPT = "分析新聞並輸出 JSON：\n{\"label\": \"葉配/網軍/正常\"}\n內容："
+    AI_PROMPT = "分析新聞並輸出 JSON。分類為：葉配、網軍、垃圾新聞或正常。垃圾新聞是轉載網路網紅、名嘴的個人意見，缺乏獨立採訪或實質新聞資訊。\n內容："
+    AI_API_URL = "https://generativelanguage.googleapis.com"
+    AI_MODEL = "gemini-3.6-flash"
+    AI_TIMEOUT_SECONDS = 60
+    AI_MAX_RETRIES = 2
+    AI_MAX_TOKENS = 2048
+    MAX_NEWS_TOTAL = 15
     print("⚠️ 警告：未找到 app.config，已自動發動內建保底參數。")
 
 # 🌟 核心修正：依據 config 參數判定是否在雲端直接炸掉舊資料庫
@@ -40,10 +53,57 @@ if force_reset_db and os.path.exists("news.db"):
 elif not force_reset_db:
     print("🔒 FORCE_RESET_DB 已關閉！進入正常累積模式（僅抓取並新增未重複之最新新聞）。")
 
-# 1. 初始化 AI 客戶端
+# 1. 初始化 Gemini AI 設定
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+if not GEMINI_API_KEY and os.name == "nt":
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as user_environment:
+            GEMINI_API_KEY = winreg.QueryValueEx(user_environment, "GEMINI_API_KEY")[0]
+    except (FileNotFoundError, OSError):
+        pass
+
+ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+
+def request_ai_content(prompt):
+    if not ai_client:
+        raise RuntimeError("GEMINI_API_KEY 未設定")
+
+    for attempt in range(AI_MAX_RETRIES + 1):
+        try:
+            response = ai_client.models.generate_content(
+                model=AI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=AI_MAX_TOKENS,
+                    response_mime_type="application/json",
+                ),
+            )
+            return (response.text or "").strip()
+        except Exception as error:
+            error_text = str(error).lower()
+            transient_error = (
+                "429" in error_text
+                or "500" in error_text
+                or "502" in error_text
+                or "503" in error_text
+                or "504" in error_text
+                or "timeout" in error_text
+                or "unavailable" in error_text
+                or "resource exhausted" in error_text
+                or "rate limit" in error_text
+            )
+            if not transient_error or attempt >= AI_MAX_RETRIES:
+                raise
+
+            delay = 2 ** attempt
+            print(f"   -> Gemini API 暫時無法服務，{delay} 秒後重試...", flush=True)
+            time.sleep(delay)
+
+    raise RuntimeError("Gemini API request failed")
 
 # 2. 初始化資料庫（若被抹除則會重新建立空白檔案）
 conn = sqlite3.connect("news.db")
@@ -74,9 +134,12 @@ print("開始下載新聞源並執行深度圖片正則提取...")
 today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 inserted_count = 0
 updated_count = 0
+processed_news_count = 0
 ssl_context = ssl._create_unverified_context()
 
 for source_name, url in RSS_SOURCES.items():
+    if processed_news_count >= MAX_NEWS_TOTAL:
+        break
     print(f"正在連線抓取: {source_name}")
     try:
         req = urllib.request.Request(
@@ -100,7 +163,9 @@ for source_name, url in RSS_SOURCES.items():
     if not feed.entries:
         continue
         
-    for entry in feed.entries[:15]:
+    pending_news = []
+    remaining_news = MAX_NEWS_TOTAL - processed_news_count
+    for entry in feed.entries[:min(15, remaining_news)]:
         title = entry.title
         raw_description = entry.get('summary', entry.get('description', ''))
         
@@ -132,36 +197,80 @@ for source_name, url in RSS_SOURCES.items():
         
         link = entry.link
         pub_date_str = entry.get('published', entry.get('pubDate', today_str))
-        
-        # 🤖 呼叫 Gemini AI 進行 JSON 判讀
-        ai_label = "正常"
-        try:
-            time.sleep(3.5) # 防止觸發免費版頻率限制
-            response = model.generate_content(AI_PROMPT + f"標題:{title}\n摘要:{summary}")
-            raw_text = response.text.strip()
-            raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
-            
-            ai_data = json.loads(raw_text)
-            ai_label = ai_data.get("label", "正常")
-            if "網群" in ai_label:
-                ai_label = "網軍"
-        except Exception as e:
-            print(f"   ⚠️ AI 判讀受限，已發動異常保底機制: {title[:12]}...")
-            ai_label = "AI異常"
 
+        cursor.execute("SELECT 1 FROM filtered_news WHERE link = ? LIMIT 1", (link,))
+        if cursor.fetchone():
+            print(f"   -> URL 已存在，跳過新聞: {title[:30]}...")
+            continue
+
+        pending_news.append({
+            "title": title,
+            "summary": summary,
+            "source": source_name,
+            "image_url": img_url,
+            "link": link,
+            "pub_date": pub_date_str,
+        })
+
+    if not pending_news:
+        continue
+
+    # 每個來源只呼叫一次 Gemini，避免每篇新聞各自發送請求。
+    labels = ["AI異常"] * len(pending_news)
+    try:
+        if not GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY 未設定")
+
+        batch_items = [
+            {"index": index, "title": news["title"], "summary": news["summary"]}
+            for index, news in enumerate(pending_news)
+        ]
+        batch_prompt = (
+            f"{AI_PROMPT}\n"
+            "以下是多則新聞。請逐則分析，並只輸出 JSON 陣列；index 必須對應輸入順序，"
+            "label 只能是「葉配」、「網軍」、「垃圾新聞」或「正常」。垃圾新聞是轉載網路網紅、名嘴的個人意見，缺乏獨立採訪或實質新聞資訊。格式："
+            '[{"index": 0, "label": "正常"}]\n'
+            f"新聞清單：{json.dumps(batch_items, ensure_ascii=False)}"
+        )
+        raw_text = request_ai_content(batch_prompt)
+
+        print(f"   -> Gemini 批次回應: {raw_text[:120]}...")
+
+        json_match = re.search(r"\[.*\]", raw_text, flags=re.DOTALL)
+        if not json_match:
+            raise ValueError(f"Gemini 批次回應未包含 JSON array: {raw_text[:120]!r}")
+
+        ai_results = json.loads(json_match.group(0))
+        for result in ai_results:
+            index = result.get("index")
+            label = result.get("label", "AI異常")
+            if isinstance(index, int) and 0 <= index < len(labels):
+                if "網群" in label:
+                    label = "網軍"
+                elif "垃圾" in label:
+                    label = "垃圾新聞"
+                elif label not in {"葉配", "網軍", "正常"}:
+                    label = "AI異常"
+                labels[index] = label
+    except Exception as e:
+        print(f"   ⚠️ Gemini 批次判讀受限: {e}...")
+
+    for news, ai_label in zip(pending_news, labels):
         # 寫入或更新
         try:
             cursor.execute("""
             INSERT INTO filtered_news (title, summary, source, image_url, link, pub_date, ai_label, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (title, summary, source_name, img_url, link, pub_date_str, ai_label, today_str))
+            """, (news["title"], news["summary"], news["source"], news["image_url"], news["link"], news["pub_date"], ai_label, today_str))
             inserted_count += 1
         except sqlite3.IntegrityError:
             cursor.execute("""
             UPDATE filtered_news SET ai_label = ? WHERE title = ? AND ai_label = '正常'
-            """, (ai_label, title))
+            """, (ai_label, news["title"]))
             if cursor.rowcount > 0:
                 updated_count += 1
+
+    processed_news_count += len(pending_news)
 
 conn.commit()
 print(f" Bars 📊 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
@@ -211,6 +320,8 @@ for date_str in all_dates:
             label_badge = '<span class="badge-label label-yp">🟡 廠商業配</span>'
         elif label_text == "網軍":
             label_badge = '<span class="badge-label label-wj">🔴 網軍風向</span>'
+        elif label_text == "垃圾新聞":
+            label_badge = '<span class="badge-label label-trash">🗑️ 垃圾新聞</span>'
         else:
             label_badge = '<span class="badge-label label-err">⚪ AI異常</span>'
 
