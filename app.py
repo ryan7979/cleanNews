@@ -388,10 +388,7 @@ source_tags = '<button type="button" class="btn-tag active" data-filter="all">�
 for source_name in RSS_SOURCES:
     source_tags += f'<button type="button" class="btn-tag" data-filter="{source_name}">{source_name}</button>'
 
-# 1. 定義 +8 時區 (台灣/北京時間)
 tz_plus8 = datetime.timezone(datetime.timedelta(hours=8))
-
-# 2. 獲取帶有 +8 時區資訊的當前時間
 updated_at = datetime.datetime.now(tz_plus8).strftime("%Y/%m/%d %H:%M:%S")
 
 for date_str in all_dates:

@@ -34,7 +34,7 @@ jobs:
     - name: 準備 GitHub Pages 發布檔案
       run: |
         mkdir -p deploy/archive
-        cp index.html news.db deploy/
+        cp index.html news.db world-news.png deploy/
         cp -R archive/. deploy/archive/
 
     - name: 發布到 GitHub Pages gh-pages 分支
