@@ -101,6 +101,16 @@
         var normalOnly = document.getElementById('normal-only');
         var abnormalOnly = document.getElementById('abnormal-only');
 
+        function resetLabelFilters() {
+            normalOnly.checked = true;
+            abnormalOnly.checked = true;
+            selectedSource = 'all';
+            document.querySelectorAll('.btn-tag').forEach(function (button) {
+                button.classList.toggle('active', button.dataset.filter === 'all');
+            });
+            applyFilters();
+        }
+
         function applyFilters() {
             document.querySelectorAll('.card').forEach(function (card) {
                 var matchesSource = selectedSource === 'all' || card.dataset.source === selectedSource;
@@ -126,6 +136,8 @@
         });
         normalOnly.addEventListener('change', applyFilters);
         abnormalOnly.addEventListener('change', applyFilters);
+        window.addEventListener('pageshow', resetLabelFilters);
+        resetLabelFilters();
 
         var backToTop = document.getElementById('back-to-top');
         window.addEventListener('scroll', function () {
