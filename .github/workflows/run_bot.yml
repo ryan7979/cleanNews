@@ -36,6 +36,7 @@ jobs:
         mkdir -p deploy/archive
         cp index.html news.db broadcast.png deploy/
         cp -R archive/. deploy/archive/
+        cp broadcast.png deploy/archive/
 
     - name: 發布到 GitHub Pages gh-pages 分支
       uses: peaceiris/actions-gh-pages@v4

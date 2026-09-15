@@ -15,6 +15,8 @@ from google import genai
 from google.genai import types
 from string import Template
 
+UTC_PLUS_8 = datetime.timezone(datetime.timedelta(hours=8))
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 APP_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_exe.log")
@@ -38,7 +40,7 @@ class Tee:
 app_log_file = open(APP_LOG, "w", encoding="utf-8", buffering=1)
 sys.stdout = Tee(sys.__stdout__, app_log_file)
 sys.stderr = Tee(sys.__stderr__, app_log_file)
-print(f"Application execution started: {datetime.datetime.now().isoformat()}")
+print(f"Application execution started: {datetime.datetime.now(UTC_PLUS_8).isoformat()}")
 
 # 讀取外部 app.config；設定缺失或格式錯誤時直接中止。
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.config")
@@ -56,8 +58,10 @@ try:
     AI_MAX_RETRIES = config_data.get("AI_MAX_RETRIES", 2)
     AI_MAX_TOKENS = config_data.get("AI_MAX_TOKENS", 2048)
     MAX_NEWS_TOTAL = config_data.get("MAX_NEWS_TOTAL", 15)
+    ARCHIVE_DAYS = config_data.get("ARCHIVE_DAYS", 5)
+    DB_CLEANUP_DAYS = config_data.get("DB_CLEANUP_DAYS", 90)
     force_reset_db = config_data.get("FORCE_RESET_DB", False)
-    print("📁 成功自建入外部 app.config 核心配置參數！")
+    print("成功自建入外部 app.config 核心配置參數！")
 except Exception as error:
     print(f"[ERROR] 外部 app.config 讀取失敗: {error}", file=sys.stderr)
     raise
@@ -66,11 +70,11 @@ except Exception as error:
 if force_reset_db and os.path.exists("news.db"):
     try:
         os.remove("news.db")
-        print("💥 FORCE_RESET_DB 已開啟！已強制抹除舊的 news.db 資料庫，啟動全新乾淨大抓取！")
+        print("FORCE_RESET_DB 已開啟！已強制抹除舊的 news.db 資料庫，啟動全新乾淨大抓取！")
     except Exception as e:
         print(f"抹除資料庫失敗: {e}")
 elif not force_reset_db:
-    print("🔒 FORCE_RESET_DB 已關閉！進入正常累積模式（僅抓取並新增未重複之最新新聞）。")
+    print("FORCE_RESET_DB 已關閉！進入正常累積模式（僅抓取並新增未重複之最新新聞。）")
 
 # 1. 初始化 Gemini AI 設定
 local_config_path = os.path.join(
@@ -152,15 +156,22 @@ def parse_news_date(value):
     try:
         parsed_date = parsedate_to_datetime(value)
         if parsed_date.tzinfo is None:
-            parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+            parsed_date = parsed_date.replace(tzinfo=UTC_PLUS_8)
+        else:
+            parsed_date = parsed_date.astimezone(UTC_PLUS_8)
         return parsed_date
     except (TypeError, ValueError, OverflowError):
-        return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+        return datetime.datetime.min.replace(tzinfo=UTC_PLUS_8)
 
 
 def format_news_date(value):
     try:
-        return parsedate_to_datetime(value).strftime("%Y/%m/%d %H:%M:%S")
+        dt = parsedate_to_datetime(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC_PLUS_8)
+        else:
+            dt = dt.astimezone(UTC_PLUS_8)
+        return dt.strftime("%Y/%m/%d %H:%M:%S")
     except (TypeError, ValueError, OverflowError):
         return value
 
@@ -227,7 +238,7 @@ except sqlite3.OperationalError:
     pass
 
 print("開始下載新聞源並執行深度圖片正則提取...")
-today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+today_str = datetime.datetime.now(UTC_PLUS_8).strftime("%Y-%m-%d")
 inserted_count = 0
 updated_count = 0
 processed_news_count = 0
@@ -367,18 +378,30 @@ for source_name, url in RSS_SOURCES.items():
     processed_news_count += len(pending_news)
 
 conn.commit()
-print(f" Bars 📊 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
+print(f" Bars 掃描結束！本次成功「全新寫入」 {inserted_count} 則新聞，「更新標籤」 {updated_count} 則舊新聞。")
 
 # 4. 讀取樣式模板並渲染出全新網頁
 with open("template.html", "r", encoding="utf-8") as f:
     template_content = f.read()
 html_template = Template(template_content)
 
-cursor.execute("SELECT DISTINCT created_at FROM filtered_news ORDER BY created_at DESC")
-all_dates = [row['created_at'] for row in cursor.fetchall()]
+# Fetch all news rows needed for display
+cursor.execute("SELECT title, summary, source, image_url, link, pub_date, ai_label FROM filtered_news")
+all_rows = cursor.fetchall()
 
-if not all_dates:
-    all_dates = [today_str]
+# Group rows by publication date (UTC+8) as YYYY-MM-DD strings
+date_to_rows = {}
+for row in all_rows:
+    pub_dt = parse_news_date(row["pub_date"])
+    date_key = pub_dt.date().isoformat()
+    date_to_rows.setdefault(date_key, []).append(row)
+
+# Ensure today is present (even if no news)
+date_to_rows.setdefault(today_str, [])
+
+# Determine which dates to show: today + most recent others, limited to ARCHIVE_DAYS
+all_available_dates = set(date_to_rows.keys())
+all_dates = sorted(all_available_dates | {today_str}, reverse=True)[:ARCHIVE_DAYS]
 
 date_buttons = ""
 for d in all_dates:
@@ -388,20 +411,19 @@ source_tags = '<button type="button" class="btn-tag active" data-filter="all">�
 for source_name in RSS_SOURCES:
     source_tags += f'<button type="button" class="btn-tag" data-filter="{source_name}">{source_name}</button>'
 
-tz_plus8 = datetime.timezone(datetime.timedelta(hours=8))
-updated_at = datetime.datetime.now(tz_plus8).strftime("%Y/%m/%d %H:%M:%S")
+updated_at = datetime.datetime.now(UTC_PLUS_8).strftime("%Y/%m/%d %H:%M:%S")
 
 for date_str in all_dates:
-    cursor.execute("""
-        SELECT title, summary, source, image_url, link, pub_date, ai_label 
-        FROM filtered_news 
-        WHERE created_at = ? 
-    """, (date_str,))
-    news_rows = sorted(
-        cursor.fetchall(),
-        key=lambda row: parse_news_date(row["pub_date"]),
-        reverse=True,
-    )
+    news_rows = date_to_rows.get(date_str, [])
+    news_rows = sorted(news_rows, key=lambda r: parse_news_date(r["pub_date"]), reverse=True)
+    # Filter to only include news whose publication date matches date_str (UTC+8)
+    target_date = datetime.date.fromisoformat(date_str)
+    filtered_rows = []
+    for r in news_rows:
+        pub_dt = parse_news_date(r["pub_date"])
+        if pub_dt.date() == target_date:
+            filtered_rows.append(r)
+    news_rows = filtered_rows
     
     cards_html = ""
     for r in news_rows:
@@ -467,7 +489,8 @@ for date_str in all_dates:
         with open(f"archive/{date_str}.html", "w", encoding="utf-8") as f_arch:
             f_arch.write(full_webpage)
 
-cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < date('now', '-90 days')")
+cutoff_date = (datetime.datetime.now(UTC_PLUS_8) - datetime.timedelta(days=DB_CLEANUP_DAYS)).strftime('%Y-%m-%d')
+cursor.execute("DELETE FROM filtered_news WHERE date(created_at) < ?", (cutoff_date,))
 conn.commit()
 conn.close()
-print("🎉 網頁與資料庫更新成功！")
+print("網頁與資料庫更新成功！")
