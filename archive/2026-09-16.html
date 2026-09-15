@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新聞過濾器</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="broadcast.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="broadcast.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #020617; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; line-height: 1.5; }
+        .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); border-bottom: 1px solid #1e293b; padding: 2.5rem 1.5rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        .header-container { max-width: 1024px; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 1rem; }
+        @media (min-width: 768px) { .header-container { flex-direction: row; text-align: left; } }
+        .header-title { font-size: 1.875rem; font-weight: 900; color: #ffffff; letter-spacing: -0.025em; }
+        .header-title img { width:32px }
+        .header-subtitle { color: #94a3b8; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .header-subtitle-time { color: #f99e3d; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .badge-ai { background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        .header-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.75rem; }
+        .main-container { max-width: 1536px; margin: 0 auto; padding: 2rem 1rem; }
+        .date-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .date-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+        .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-date:hover { background-color: #334155; color: #ffffff; }
+        .tag-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .tag-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; }
+        .btn-tag { cursor: pointer; padding: 0.375rem 1rem; border-radius: 9999px; font: inherit; font-size: 0.75rem; font-weight: 500; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-tag:hover, .btn-tag.active { background-color: #4f46e5; border-color: #6366f1; color: #ffffff; }
+        .normal-filter { display: inline-flex; align-items: center; gap: 0.5rem; color: #cbd5e1; font-size: 0.75rem; font-weight: 600; }
+        .normal-filter input { width: 1rem; height: 1rem; accent-color: #4f46e5; }
+        .back-to-top { position: fixed; right: 1.5rem; bottom: 1.5rem; width: 2.75rem; height: 2.75rem; border: 1px solid #6366f1; border-radius: 50%; color: #ffffff; background: #4f46e5; cursor: pointer; font-size: 1.25rem; box-shadow: 0 8px 20px rgba(0,0,0,0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+        .back-to-top.is-visible { opacity: 1; pointer-events: auto; }
+        .back-to-top:hover { transform: translateY(-2px); }
+        .news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .card:hover { border-color: rgba(242, 120, 12, 0.5); border-width: revert; transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .img-container { width: 100%; height: 12rem; overflow: hidden; background-color: #020617; border-bottom: 1px solid #1e293b; }
+        .card-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
+        .card:hover .card-img { transform: scale(1.03); }
+        .meta-row { padding: 1.25rem 1.25rem 0.5rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
+        .meta-left { display: flex; align-items: center; gap: 0.5rem; }
+        .badge-source { font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.625rem; border-radius: 0.75rem; color: #818cf8; background-color: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); }
+        .badge-reporter { font-size: 0.75rem; color: #94a3b8; font-weight: 600; background-color: #1e293b; padding: 0.25rem 0.5rem; border-radius: 0.5rem; }
+        .badge-label { font-size: 0.6875rem; font-weight: 800; padding: 0.125rem 0.625rem; border-radius: 9999px; }
+        .label-normal { color: #34d399; background-color: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.2); }
+        .label-yp { color: #fbbf24; background-color: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2); }
+        .label-wj { color: #f87171; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); }
+        .label-trash { color: #fb923c; background-color: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); }
+        .card.is-hidden { display: none !important; }
+        .card-body { padding: 0 1.25rem 1.25rem 1.25rem; flex-grow: 1; }
+        .card-title { font-size: 1.125rem; font-weight: 700; color: #f1f5f9; line-height: 1.4; margin-bottom: 0.75rem; }
+        .card-title a { color: inherit; text-decoration: none; }
+        .card-title a:hover { color: #818cf8; }
+        .card-text { color: #94a3b8; font-size: 0.875rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-footer { padding: 1.25rem; border-top: 1px solid rgba(30, 41, 59, 0.5); display: flex; justify-content: space-between; align-items: center; background-color: rgba(15, 23, 42, 0.2); }
+        .news-date { font-size: 0.6875rem; color: #f99e3d; font-weight: bold; }
+        .btn-link { font-size: 0.75rem; font-weight: 700; color: #818cf8; text-decoration: none; display: flex; align-items: center; gap: 0.25rem; }
+        .btn-link:hover { color: #a5b4fc; }
+        .no-data { text-align: center; padding: 4rem; background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; color: #64748b; grid-column: 1 / -1; }
+        footer { text-align: center; font-size: 0.75rem; color: #475569; margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #0f172a; }
+    </style>
+</head>
+<body>
+    <div class="header-banner">
+        <div class="header-container">
+            <div>
+                <h1 class="header-title"><img src="broadcast.png" alt="新聞過濾器"> 新聞過濾器</h1>
+                <p class="header-subtitle">即時解析：媒體來源 / 網軍與業配過濾</p>
+                <p class="header-subtitle-time">最後更新：2026/09/16 05:45:37</p>
+            </div>
+            <div class="header-filters" aria-label="新聞分類篩選">
+                <label class="normal-filter">
+                    <input type="checkbox" id="normal-only" checked>
+                    <span>&#x986F;&#x793A;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+                <label class="normal-filter">
+                    <input type="checkbox" id="abnormal-only" checked>
+                    <span>&#x986F;&#x793A;&#x4E0D;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="date-navbar">
+            <span class="date-label">📅 歷史日期：</span>
+            <a href="../index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
+            <a href="/cleanNews/archive/2026-09-16.html" class="btn-date">2026-09-16</a><a href="/cleanNews/archive/2026-09-15.html" class="btn-date">2026-09-15</a><a href="/cleanNews/archive/2026-09-14.html" class="btn-date">2026-09-14</a>
+        </div>
+        <div class="tag-navbar" aria-label="新聞來源篩選">
+            <span class="tag-label">來源：</span>
+            <button type="button" class="btn-tag active" data-filter="all">全部</button><button type="button" class="btn-tag" data-filter="ETtoday 新聞雲">ETtoday 新聞雲</button><button type="button" class="btn-tag" data-filter="自由時報電子報">自由時報電子報</button><button type="button" class="btn-tag" data-filter="科技新報">科技新報</button><button type="button" class="btn-tag" data-filter="風傳媒">風傳媒</button><button type="button" class="btn-tag" data-filter="Yahoo">Yahoo</button><button type="button" class="btn-tag" data-filter="Google">Google</button>
+        </div>
+        <div class="news-grid">
+            
+            <div class="card" data-source="自由時報電子報" data-label="葉配">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-yp">🟡 廠商業配</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://istyle.ltn.com.tw/article/41065" target="_blank">遠東Garden City開幕改寫商場紀錄 雄踞3.6萬坪絕美花園殿堂 近200家首發品牌全面啟動</a>
+                        </h2>
+                        <p class="card-text">座落台北市核心地帶的遠東Garden City B區商場棟，正式於今（16）日迎來盛大開幕，這座結合自然意象與現代建築的全新商業設施，總面積廣達36,000坪，是目前台北市中心最大規模的購物商城，B區商場以「莫內花園」為主題，從地下2樓至地上8樓，精心規劃涵蓋潮流精品、美妝、運動、親子、家電與特色餐</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:40:00</span>
+                    <a href="https://istyle.ltn.com.tw/article/41065" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://ec.ltn.com.tw/article/breakingnews/5575261" target="_blank">油價漲、美債殖利率創高　美股3大指數收跌費半小漲</a>
+                        </h2>
+                        <p class="card-text">隨著國際油價飆漲、美國10年期公債殖利率觸及19年高點，美股3大指數今天收跌。費城半導體指數則是微幅收高。市場投資人靜待美國聯邦準備理事會（Fed）本週利率決策。
+
+道瓊工業指數跌328.0...…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:36:03</span>
+                    <a href="https://ec.ltn.com.tw/article/breakingnews/5575261" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/zh-tw/setn.com.tw/0c503e9156debc179119db5f2c16c420.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E7%9B%A4%E5%89%8D-%E5%A4%96%E8%B3%87%E5%B1%A0%E6%AE%BA-%E9%80%99%E6%AA%94%E8%A8%98%E6%86%B6%E9%AB%94-7-2%E8%90%AC%E5%BC%B5-213500386.html" target="_blank">【盤前】外資屠殺「這檔記憶體」7.2萬張　69萬股東集體唱愛是一道光</a>
+                        </h2>
+                        <p class="card-text">台股昨（15）日震盪走跌，加權指數收在45511.49點，下跌351.03點。外資操作轉趨保守，單日大舉提款台股，其中力積電慘遭外資狠砍逾7萬張，股價重挫5.37%，成為當日賣超榜首。外資賣超前十大個股還包括友達、聯電、中鋼與彰銀等權值股。相較之下，投信則呈現買超動作，主要加碼聯電、兆豐金及玉山金等</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:35:00</span>
+                    <a href="https://tw.news.yahoo.com/%E7%9B%A4%E5%89%8D-%E5%A4%96%E8%B3%87%E5%B1%A0%E6%AE%BA-%E9%80%99%E6%AA%94%E8%A8%98%E6%86%B6%E9%AB%94-7-2%E8%90%AC%E5%BC%B5-213500386.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/society/paper/1770866" target="_blank">中製投影器偽裝台製 校園還在用危及資安</a>
+                        </h2>
+                        <p class="card-text">〔記者陳建志、張軒哲／台中報導〕友達旗下傑可達公司二〇二一年投標大甲國中教學採購案，其中無線投影接收器不符合規範，公司高層為了通過驗收，竟以「磨牌換標」手法將中國貨偽裝成台灣製，不僅涉嫌詐欺，更危及校園資安，踩到校園資訊安全紅線。但該批接收器目前仍由學校使用，引發質疑；台中市教育局表示，因訴訟期間無</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/society/paper/1770866" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/society/paper/1770799" target="_blank">「釣魚連結詐騙」倍數增加 假電信、交通收費通知 點擊就破財</a>
+                        </h2>
+                        <p class="card-text">〔記者邱俊福／台北報導〕刑事警察局依據「一六五打詐儀錶板」最新統計分析，上月各類詐騙總受理數與財損雖有下降，但「釣魚連結詐騙」受理五〇五件、財損五四五一萬餘元，較去年同期受理二五三件、財損一三〇五萬餘元，均呈倍數增加，近期手法則以假冒電信、交通收費通知，再誘騙民眾點擊網路連結手法最為常見。
+
+發…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/society/paper/1770799" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/life/paper/1770798" target="_blank">東莒島燈塔常設展 明起免費參觀</a>
+                        </h2>
+                        <p class="card-text">〔記者吳亮儀／台北報導〕邁入第154年的馬祖東莒島燈塔，明天起在燈塔展覽室舉辦常設展，展出早年稀有的燈塔用品，包含1850年英國米爾納（Milner’s Co.）專利防火保險箱、早期換班通訊電鈴，以及「煤油提燈」體驗裝置，免費參觀。
+
+展區走廊設有最佳拍照點，能記錄燈塔與經典白色矮牆的唯美身影，…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/life/paper/1770798" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="網軍">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/politics/paper/1770800" target="_blank">總預算三讀逾月 立院遲未送出 政院：2240億預算無法動支</a>
+                        </h2>
+                        <p class="card-text">〔記者陳鈺馥、方瑋立／台北報導〕今年度中央政府總預算在立法院延宕近一年，八月十四日才三讀通過，但迄今立法院仍未咨請總統公布，導致總預算迄未生效。行政院發言人李慧芝表示，依「預算法」第五十四條及其補充規定，目前無法動支預算共二二四〇億元，其中包含新興計畫二九九億元，及經常性經費及延續性計畫超過去年預算</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/politics/paper/1770800" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/politics/paper/1770803" target="_blank">吳秀華家族東映農路弊案 台東副議長列被告</a>
+                        </h2>
+                        <p class="card-text">〔記者劉人瑋／台東報導〕台東地檢署偵辦台東縣議長、國民黨縣長參選人吳秀華家族投資東映渡假村農路拓寬弊案，縣副議長林琮翰因提案補助該農路，先前以證人身分受訊獲請回，昨天改列被告再次偵訊後，檢方諭令一百萬元交保，是台東司法史上少見的高額交保金。
+
+東檢偵辦本案迄今，已收押縣府農業處長許家豪、前承辦科…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/politics/paper/1770803" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/politics/paper/1770802" target="_blank">追緝高金「大帳房」張俊傑 檢舉獎金百萬</a>
+                        </h2>
+                        <p class="card-text">〔記者陸運鋒、吳昇儒、邱俊福／台北報導〕無黨籍立法委員高金素梅「大帳房」張俊傑棄保潛逃已十一天，逃亡路線橫跨北中南，沿途變裝超過七次。檢警專案小組掌握，張原本打算偷渡出境，但被國安、警政、海巡等系統嚴密封鎖，研判仍在國內竄逃，警政署昨公布查緝專刊，並懸賞一百萬元檢舉獎金，全力緝拿歸案。
+
+
+沿…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/politics/paper/1770802" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/world/paper/1770818" target="_blank">川普政府施壓 日本國防開支擬提高至GDP 3.5％</a>
+                        </h2>
+                        <p class="card-text">〔國際新聞中心／綜合報導〕日本政府正考慮制定新的中期國防支出目標，將預算調升至國內生產毛額（GDP）的三‧五％，向北大西洋公約組織（NATO）及美國其他盟邦的標準看齊。然而，此舉可能對原本就對首相高市早苗擴大支出計畫感到擔憂的金融市場帶來衝擊。
+可能比照南韓 10年增至3到3.5％
+彭博十五日引…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/world/paper/1770818" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/society/paper/1770865" target="_blank">校園採購案 友達子公司「磨牌換標」／中國貨充台製 傑可達總經理判刑</a>
+                        </h2>
+                        <p class="card-text">〔記者陳建志／台中報導〕友達集團旗下傑可達數位股份有限公司投標大甲國中教學採購案，該標案載明「不得為中國大陸廠商品牌」，總經理翁如玉、許姓行銷經理及黃姓業務經理卻將中國商品上的品牌標誌以打磨機磨除，改貼上台灣製「JECTOR」字樣貼紙，偽裝成台灣貨。政風人員接獲檢舉後查核揭發並移送法辦，雖三人均不認</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/society/paper/1770865" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/world/paper/1770816" target="_blank">劍指中俄 美軍證實在地球軌道部署武器</a>
+                        </h2>
+                        <p class="card-text">凸顯大國競逐太空軍事能力進入新階段
+〔編譯林家宇／綜合報導〕美國空軍部長梅因克（Troy Meink）十四日首度公開證實，美國已在地球軌道部署武器。除了表明美國軍事力量已延伸至太空領域，也是向具有相同野心和能力的對手中國和俄羅斯傳達明確警告。分析家指出，美軍的聲明證實長久以來的公開秘密，凸顯大國競…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/world/paper/1770816" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="網軍">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/politics/paper/1770822" target="_blank">總預算三讀滿月未出立院 390萬人補助恐卡關</a>
+                        </h2>
+                        <p class="card-text">軍公教、老農、中低收入戶、弱勢兒童福利與津貼加碼案 受影響
+〔記者陳鈺馥、方瑋立／台北報導〕今年度中央政府總預算三讀已逾一個月，立法院迄今未函送行政院及咨請總統公布生效，連帶影響追加預算案後續審議程序，以致軍公教、老農、中低收入戶、弱勢兒童等三九〇萬人的福利與津貼加碼案，如果總預算案遲未生效、追加…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/politics/paper/1770822" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/world/paper/1770817" target="_blank">五角大廈督察長報告》美伊戰爭4個月燒掉1兆元 自曝彈藥短缺</a>
+                        </h2>
+                        <p class="card-text">〔編譯管淑平／綜合報導〕美國戰爭部（國防部）督察長十四日公布首份美國對伊朗戰爭報告，指出至六月底為止，這場戰爭耗費三三四億美元（約新台幣一兆六四二億元），並證實戰爭已導致美國彈藥短缺及供應瓶頸。
+這份報告的主要內容多半已被披露，但這是開戰至今，五角大廈督察長首次提出這場「史詩怒火」行動造成的美國人…</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/world/paper/1770817" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/life/paper/1770848" target="_blank">失能者重審駕照未過 強制註銷／交部預告新制 初估有身心障礙證明約4.7萬人</a>
+                        </h2>
+                        <p class="card-text">〔記者吳亮儀／台北報導〕台灣邁入超高齡社會，越來越多人身體失能，也常發生許多人抱病開車上路肇事，成為不定時炸彈；交通部昨天預告新制，因身體老化、疾病等因素導致體格或體能變化影響行車安全者，須重新辦理駕駛執照資格審查，並依審查結果決定駕照維持、註銷、降級或換發普通駕照，違者可處六萬元罰鍰，初估相關身心</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/life/paper/1770848" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="自由時報電子報" data-label="網軍">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">自由時報電子報</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.ltn.com.tw/news/politics/paper/1770810" target="_blank">沈邀一週一辯論 蔣答還有市政工作</a>
+                        </h2>
+                        <p class="card-text">〔記者董冠怡、孫唯容、何玉華／台北報導〕九合一選舉投票日進入倒數七十三天，民進黨台北市長參選人、立委沈伯洋昨天下一週一辯論戰帖，盼在選前與台北市長蔣萬安進行十場「交叉詰問式辯論」，讓市民更了解市長候選人；蔣萬安受訪未置可否，僅表示剛結束總質詢，接下來還有許多市政工作要面對，自己四年前有參加六都唯一一</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://news.ltn.com.tw/news/politics/paper/1770810" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/214bf531662adadbc5fd5d84bf41da6b.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E9%87%91%E9%90%9861-%E6%88%B2%E5%8A%87%E9%A1%9E-%E8%88%87%E6%83%A12-%E5%BF%98%E4%BA%86%E6%88%91%E8%A8%98%E5%BE%97%E6%9C%80%E5%A4%AF-%E5%85%A5%E5%9C%8D%E7%8B%82%E6%8E%8313%E9%A0%85-213000023.html" target="_blank">〈金鐘61-戲劇類〉與惡2 忘了我記得最夯 入圍狂掃13項</a>
+                        </h2>
+                        <p class="card-text">零日攻擊僅2提名 曹瑞原指輸在報名規章金鐘61入圍名單昨揭曉，今年名單四平八穩，幾乎全落在觀眾的預期之中，其中《我們與惡的距離2》與《忘了我記得》雙雙包攬13項入圍提名，並列本屆入圍大贏家，喜劇《監所男子囚生記》入圍11項。戲后死亡之組激戰 戲王老將新秀爭寵</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E9%87%91%E9%90%9861-%E6%88%B2%E5%8A%87%E9%A1%9E-%E8%88%87%E6%83%A12-%E5%BF%98%E4%BA%86%E6%88%91%E8%A8%98%E5%BE%97%E6%9C%80%E5%A4%AF-%E5%85%A5%E5%9C%8D%E7%8B%82%E6%8E%8313%E9%A0%85-213000023.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/2fa6e4c8448f077f924139213a66c000.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.sports.yahoo.com/news/%E5%BC%B5%E6%94%BF%E7%A6%B9%E7%8C%9B%E6%89%93%E8%B3%9Emvp-%E6%88%B2%E5%9C%A8%E6%92%88%E5%93%A5%E8%BA%AB%E4%B8%8A-213000942.html" target="_blank">張政禹猛打賞MVP 戲在撈哥身上</a>
+                        </h2>
+                        <p class="card-text">作客新莊4打席被噓到飽味全龍與富邦悍將在8日吉力吉撈．鞏冠推戴培峰的衝突後首次交手，吉力吉撈4個打席都被噓飽噓滿與戴培峰7局下挨觸身球，都為比賽再次製造高潮，味全靠張政禹4打數3安打貢獻2分重要打點，配合黃暐傑交出5局無失分的好投，以3：0擊敗富邦中止4連敗。</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.sports.yahoo.com/news/%E5%BC%B5%E6%94%BF%E7%A6%B9%E7%8C%9B%E6%89%93%E8%B3%9Emvp-%E6%88%B2%E5%9C%A8%E6%92%88%E5%93%A5%E8%BA%AB%E4%B8%8A-213000942.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/1979f8d86aebf757fe6a3a2e070070ac.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E9%AB%98%E9%9B%84%E4%B8%AD%E5%8D%80%E6%B1%A1%E6%B0%B4%E5%BB%A0%E6%9B%B4%E6%96%B0%E5%8D%87%E7%B4%9A-%E5%B9%B4%E6%B8%9B%E7%A2%B3934%E5%99%B8-213000446.html" target="_blank">高雄中區污水廠更新升級 年減碳934噸</a>
+                        </h2>
+                        <p class="card-text">高雄市投入三．五億元推動中區污水處理廠升級，並委外代操作，預估年省公帑三千萬元，目前工程剛動工，預計二〇二八年底完工，年減碳至少九三四噸，相當於七座的高雄中央公園。中區廠啟用迄今近四十年，為高市最大污水處理廠，日平均設計處理水量達七十五萬噸，是全國第二大污水處理量，肩負愛河水質改善及市區污水處理重任</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E9%AB%98%E9%9B%84%E4%B8%AD%E5%8D%80%E6%B1%A1%E6%B0%B4%E5%BB%A0%E6%9B%B4%E6%96%B0%E5%8D%87%E7%B4%9A-%E5%B9%B4%E6%B8%9B%E7%A2%B3934%E5%99%B8-213000446.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.sports.yahoo.com/news/%E4%BA%9E%E9%81%8B-%E6%9B%BE%E7%A5%A5%E9%88%9E%E4%BB%8A%E7%BC%BA%E9%99%A3-%E6%88%91%E7%94%B7%E7%B1%83%E6%8A%97%E6%97%A5%E9%9B%A3-%E9%AB%98-%E8%AA%BF-213000276.html" target="_blank">亞運》曾祥鈞今缺陣 我男籃抗日難「高」調</a>
+                        </h2>
+                        <p class="card-text">台灣男籃在今晚在名古屋亞運8強強碰地主日本，但禁區主力曾祥鈞確定因傷缺陣，只剩11人應戰。總教練圖齊直言，球隊毫無優勢可言，且球隊在攻守上都被迫做出調整，想要連3屆挺進4強面臨不小挑戰。台灣男籃以陳盈駿、林庭謙、游艾喆等後場主力，搭配鋒線馬建豪、雷蒙恩，加上歸化中鋒高柏鎧，做為進攻主旋律，本屆亞運預</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.sports.yahoo.com/news/%E4%BA%9E%E9%81%8B-%E6%9B%BE%E7%A5%A5%E9%88%9E%E4%BB%8A%E7%BC%BA%E9%99%A3-%E6%88%91%E7%94%B7%E7%B1%83%E6%8A%97%E6%97%A5%E9%9B%A3-%E9%AB%98-%E8%AA%BF-213000276.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="網軍">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/c1bdb7f01136a738d8499f3ae60e9ce1.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E5%B0%8F%E8%8B%B1%E9%96%8B%E7%AE%B1%E9%99%B3%E4%BA%AD%E5%A6%83%E7%AB%B6%E7%B8%BD-%E8%AE%9A%E5%85%85%E6%BB%BF%E5%89%B5%E6%84%8F-213000829.html" target="_blank">小英開箱陳亭妃競總 讚充滿創意</a>
+                        </h2>
+                        <p class="card-text">貨櫃屋設計有家的感覺 佈置「妃熊幸福」 可體驗AI政見動畫簡單易懂力拚台南四百年來第一位女市長的民進黨市長參選人陳亭妃，昨天邀請台灣第一女總統前總統蔡英文為競選總部開箱，互動熱絡，體驗AI政見以及「妃熊幸福」空間，蔡英文推崇競總充滿創意與活力，直誇很有美感，將在地元素、設計美學與城市未來融合，讓選舉</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E5%B0%8F%E8%8B%B1%E9%96%8B%E7%AE%B1%E9%99%B3%E4%BA%AD%E5%A6%83%E7%AB%B6%E7%B8%BD-%E8%AE%9A%E5%85%85%E6%BB%BF%E5%89%B5%E6%84%8F-213000829.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/187be3d4731ec5cf0982b4efe2972408.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E5%B7%A5%E7%A0%94%E9%99%A2%E5%89%B5%E6%96%B0%E6%97%A5-%E5%B1%95%E7%A4%BA25%E9%A0%85%E8%B7%A8%E5%9F%9F%E7%A7%91%E6%8A%80-213000525.html" target="_blank">工研院創新日 展示25項跨域科技</a>
+                        </h2>
+                        <p class="card-text">工研院串聯研發法人與新創團隊，昨天在台南沙崙綠能科技示範場域舉辦「工研院創新日」，聚焦「國際創新」、「賦能永續」、「智動未來」及「AI無人載具」4大主題，展示25項跨域創新科技應用，並透過國際論壇、主題特展、商機媒合等，鏈結產業，希望加速技術落地與跨域合作，帶動更多產業新商機。</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E5%B7%A5%E7%A0%94%E9%99%A2%E5%89%B5%E6%96%B0%E6%97%A5-%E5%B1%95%E7%A4%BA25%E9%A0%85%E8%B7%A8%E5%9F%9F%E7%A7%91%E6%8A%80-213000525.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/6ba40990ff12b0496f91d6e2452a4157.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E6%96%B0%E5%8C%97%E6%8E%A8%E6%A9%9F%E8%BB%8A%E5%AE%89%E5%85%A8%E6%9C%88-%E4%BA%8B%E6%95%85%E6%B8%9B%E5%B0%9119-213000910.html" target="_blank">新北推機車安全月 事故減少19％</a>
+                        </h2>
+                        <p class="card-text">新北市政府昨天召開道路交通安全會報，根據統計，今年七至八月推動「機車安全月」，機車事故較去年同期減少一五七〇件、下降十九．一％；死亡人數減少六人、下降卅一．六％；受傷人數也減少一七六三人、下降十八．四％，顯示市府從工程、執法及宣導多管齊下，逐步展現成效。</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E6%96%B0%E5%8C%97%E6%8E%A8%E6%A9%9F%E8%BB%8A%E5%AE%89%E5%85%A8%E6%9C%88-%E4%BA%8B%E6%95%85%E6%B8%9B%E5%B0%9119-213000910.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/e58eea723a218df19bb087bdd4ac5a19.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E8%97%9D%E8%A1%93%E6%96%87%E5%8C%96-%E5%8F%B0%E5%8D%97%E6%AD%B7%E5%8F%B2%E5%90%8D%E4%BA%BA%E5%86%8D%E6%B7%BB%E6%96%B0%E5%9C%B0%E6%A8%99-%E9%99%B3%E8%BC%9D%E6%9D%B1%E6%95%85%E5%B1%85%E6%8E%9B%E7%89%8C%E7%95%99%E4%B8%8B%E5%9F%8E%E5%B8%82%E8%A8%98%E6%86%B6-213000262.html" target="_blank">【藝術文化】台南歷史名人再添新地標 陳輝東故居掛牌留下城市記憶</a>
+                        </h2>
+                        <p class="card-text">台南市政府昨（15）日舉行歷史名人「陳輝東故居」掛牌儀式，台南市長黃偉哲、陳輝東家屬、藝術家好友吳炫三及藝文界人士、親友共同見證，為這位一生深耕藝術、投入台南文化發展的藝術家留下城市記憶。黃偉哲表示，最敬佩陳輝東的是他「堅持做對的事情」的態度，兩人相識後，曾在畫室長談一整晚，從藝術創作談到城市文化；</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E8%97%9D%E8%A1%93%E6%96%87%E5%8C%96-%E5%8F%B0%E5%8D%97%E6%AD%B7%E5%8F%B2%E5%90%8D%E4%BA%BA%E5%86%8D%E6%B7%BB%E6%96%B0%E5%9C%B0%E6%A8%99-%E9%99%B3%E8%BC%9D%E6%9D%B1%E6%95%85%E5%B1%85%E6%8E%9B%E7%89%8C%E7%95%99%E4%B8%8B%E5%9F%8E%E5%B8%82%E8%A8%98%E6%86%B6-213000262.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/99146df1bb2f39b8334b7d0dc4ed9405.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E5%90%B3%E5%8F%AF%E7%86%99%E8%A9%95%E5%AF%A9%E6%8B%8D%E5%8F%B0%E5%8C%97-%E8%87%AA%E8%96%A6%E7%B2%BD%E9%82%AA%E6%BC%94%E5%A5%B3%E9%AC%BC-213000139.html" target="_blank">吳可熙評審拍台北 自薦粽邪演女鬼</a>
+                        </h2>
+                        <p class="card-text">第18屆「拍台北」電影劇本徵選昨頒獎，最大獎金劇本獎頒給編劇林采萱的《裂縫》，同步拿下獎金50萬元，銀、銅劇本分別為《借來的日子》和《死亡印象》；林采萱致詞時幽默自爆，故事裡的「陽明山別墅」全是杜撰，「大家如果覺得它真的存在，代表劇本成功了。」</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E5%90%B3%E5%8F%AF%E7%86%99%E8%A9%95%E5%AF%A9%E6%8B%8D%E5%8F%B0%E5%8C%97-%E8%87%AA%E8%96%A6%E7%B2%BD%E9%82%AA%E6%BC%94%E5%A5%B3%E9%AC%BC-213000139.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/ca913b7ecd6fd2ef14ba3583f75861ef.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E8%97%9D%E8%A1%93%E6%96%87%E5%8C%96-%E7%AC%AC29%E5%B1%86%E5%8F%B0%E6%B3%95%E6%96%87%E5%8C%96%E7%8D%8E%E5%B7%B4%E9%BB%8E%E9%A0%92%E7%8D%8E-%E5%B0%8F%E5%AE%9B%E7%84%B6%E5%9C%98%E9%95%B7%E8%A6%AA%E6%BC%94%E5%8F%B0%E7%81%A3%E5%B8%83%E8%A2%8B%E6%88%B2%E8%B3%80%E5%96%9C-213000498.html" target="_blank">【藝術文化】第29屆台法文化獎巴黎頒獎 小宛然團長親演台灣布袋戲賀喜</a>
+                        </h2>
+                        <p class="card-text">第29屆台法文化獎於法國14日晚間在巴黎法蘭西學院頒發，由我國文化部長李遠與法蘭西學院人文政治科學院年度主席尚-大衛．萊維特共同頒獎給兩位得主，分別是台灣淡江大學法文系名譽教授吳錫德，以及巴黎索邦大學歷史系副教授盧松。適逢成立於1996年的台法文化基金會滿30週年，前終身秘書尚侯貝．皮特、我國駐法大</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E8%97%9D%E8%A1%93%E6%96%87%E5%8C%96-%E7%AC%AC29%E5%B1%86%E5%8F%B0%E6%B3%95%E6%96%87%E5%8C%96%E7%8D%8E%E5%B7%B4%E9%BB%8E%E9%A0%92%E7%8D%8E-%E5%B0%8F%E5%AE%9B%E7%84%B6%E5%9C%98%E9%95%B7%E8%A6%AA%E6%BC%94%E5%8F%B0%E7%81%A3%E5%B8%83%E8%A2%8B%E6%88%B2%E8%B3%80%E5%96%9C-213000498.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/dd604bec18e88feb778fc4de39918537.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E7%94%B0%E5%BE%91%E5%A0%B4%E5%8F%8B%E5%96%84%E5%A4%9C%E8%B7%91-%E6%96%B0%E5%8C%97%E8%AD%B0%E5%93%A1%E4%BF%83%E5%A2%9E%E8%A8%AD%E6%96%BD-213000942.html" target="_blank">田徑場友善夜跑 新北議員促增設施</a>
+                        </h2>
+                        <p class="card-text">建議補強夜間照明、設置更衣室、吹風機 侯友宜允改善設備近年路跑活動掀起風潮，許多民眾選擇下班後到操場跑步。新北市議員彭佳芸昨天質詢指出，夜跑族需要更完善的空間，呼籲建立「夜跑友善田徑場」標準，並增設夜間照明、更衣室、吹風機等設施，打造友善運動環境。市長侯友宜允諾改善運動設備、設施，符合使用者需求。</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E7%94%B0%E5%BE%91%E5%A0%B4%E5%8F%8B%E5%96%84%E5%A4%9C%E8%B7%91-%E6%96%B0%E5%8C%97%E8%AD%B0%E5%93%A1%E4%BF%83%E5%A2%9E%E8%A8%AD%E6%96%BD-213000942.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Yahoo" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://media.zenfs.com/ko/libertytimes_786/8ee1e9250ecd5d7aa799507012bac612.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">Yahoo</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://tw.news.yahoo.com/%E8%BE%B2%E8%B7%AF%E6%B6%89%E4%BD%94%E5%9C%8B%E6%9C%89%E5%9C%B0-%E5%8D%97%E6%8A%95%E7%88%86%E5%81%87%E7%81%BD%E4%BF%AE%E5%8A%A9%E9%96%8B%E7%99%BC-213000087.html" target="_blank">農路涉佔國有地 南投爆假災修助開發</a>
+                        </h2>
+                        <p class="card-text">民眾指農路違法縣府還蓋擋土牆 工務處：去年風損修繕 無新建或「假災修」南投縣竹山鎮濁水溪旁照鏡山農路，有民眾投訴，該農路開闢涉嫌竊佔國有財產署土地，且南投縣政府在該非法農路新設擋土牆，涉及假災修之名行圖利特定人士之實，暗助當地開發案，要求檢調深入調查。</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 05:30:00</span>
+                    <a href="https://tw.news.yahoo.com/%E8%BE%B2%E8%B7%AF%E6%B6%89%E4%BD%94%E5%9C%8B%E6%9C%89%E5%9C%B0-%E5%8D%97%E6%8A%95%E7%88%86%E5%81%87%E7%81%BD%E4%BF%AE%E5%8A%A9%E9%96%8B%E7%99%BC-213000087.html" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8392/c8392106.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://health.ettoday.net/news/3238156" target="_blank">陳建州驚傳心肌梗塞！醫曝5警訊　胸悶、下巴痛也可能是前兆</a>
+                        </h2>
+                        <p class="card-text">台灣職籃PLG副會長、籃球員出身的陳建州（黑人）15日晚間傳出因急性心肌梗塞緊急送醫，PLG證實他在觀看友誼賽期間突然感到身體不適，經醫師評估後接受手術，目前已完成手術並轉往加護病房休養，恢復情況良好。消息曝光後引發外界關注，營養功能醫學醫師劉博仁也提醒，心肌梗塞看似突然，其實冠狀動脈的病變往往已經</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 01:48:00</span>
+                    <a href="https://health.ettoday.net/news/3238156" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924090.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238148.htm" target="_blank">2026全國友善動物社區治理研習　桃動保處推動「認養小站」</a>
+                        </h2>
+                        <p class="card-text">「2026全國友善動物社區治理研習」15日在桃園市南昌動物保護教育園區舉行，邀集28位村里長、社區發展協會幹部及動保夥伴交流實務，聚焦如何將動物保護從政府延伸至社區。桃園市動保處也分享推動「認養小站」，串聯展示、認養、疫苗及絕育資源，讓動物保護走進鄰里、融入日常。
+ 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 01:46:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238148.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8923/c8923391.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3237833.htm" target="_blank">開啟無人機空戰？　全球首款無人機專用空空導彈亮相</a>
+                        </h2>
+                        <p class="card-text">近年俄烏戰爭及中東衝突頻繁出現無人機大規模運用，反無人機成為軍武發展的重要趨勢。大陸在剛落幕的埃及阿拉曼國際航展（El Alamein International Airshow）中首度海外亮相一款無人機專用空空導彈霹靂-108（PL-108），宣告無人機已進入空對空打擊的嶄新時代。 《詳全文...</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 01:45:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3237833.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8923/c8923745.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238154.htm" target="_blank">快訊／接應張俊傑南下逃亡　陳厚彰聲押禁見</a>
+                        </h2>
+                        <p class="card-text">立委高金素梅前辦公室主任張俊傑6日棄保潛逃遭通緝，檢方持續調查，繼13日逮捕涉案男子潘信義後，15日再逮捕潘信義的共犯陳采薰，以及另一名曾接應張俊傑逃亡的陳厚彰，張俊傑逃亡案至今已拘提7人。檢方15日深夜複訊後，向法院聲請羈押禁見陳厚彰，並諭令陳采薰2萬元交保。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 01:18:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238154.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924095.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238152.htm" target="_blank">王齊麟突曬「一家三口」照！Rally騎李洋肩上　眾人甜喊：太幸福了</a>
+                        </h2>
+                        <p class="card-text">羽球金牌國手王齊麟今（15）日晚間突然曬出一張溫馨合照，照片中他抱著兒子「Rally」跨坐在運動部長李洋肩上，李洋則小心扶著孩子雙腳，三人互動自然又逗趣，瞬間引發網友熱議，不少人笑喊「全家福」、「麟洋配根本是一家人」，也有人直呼畫面實在太幸福。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 00:30:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238152.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="葉配">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924064.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-yp">🟡 廠商業配</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238134.htm" target="_blank">微星科技連結在地小農　捐白米及茶品關懷桃園弱勢</a>
+                        </h2>
+                        <p class="card-text">桃園市政府社會局表示，微星科技公司連結桃園市在地小農，捐贈芋香白米及紫芽紅茶茶包，一起關懷桃園弱勢家戶，15日於該局舉辦捐贈儀式，由陳寶民局長代表受贈並致贈感謝牌，肯定企業善舉。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 00:13:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238134.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/1934/c1934556.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://finance.ettoday.net/news/3238119" target="_blank">一文看13家金控前8月海賺5789億元　富邦金千億元達陣</a>
+                        </h2>
+                        <p class="card-text">國際股市8月反彈止穩，有利壽險業投資業務表現，13家稅後淨利861.26億元，累計前8月稅後淨利5789.07億元，較去年同期年增率為59.12%，富邦金（2881）帳上投資部位評價回升，重登金控單月獲利、累計前8月獲利、每股稅後盈餘（EPS）三冠王。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 00:06:00</span>
+                    <a href="https://finance.ettoday.net/news/3238119" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/7089/c7089685.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238150.htm" target="_blank">妻控丈夫凌晨性侵！到醫院採檢「驗出陌生男DNA」…跟人上床被抓包</a>
+                        </h2>
+                        <p class="card-text">台北地方法院日前審結一起侵害配偶權案件。妻子小芳（化名）因感情不睦前往醫院驗傷，提告丈夫阿豪（化名）指侵強制性交。檢方進行DNA鑑定，竟在小芳陰道深處採集到第三人男性Y染色體，揭發小芳告發前曾與他人性行為。台北地院二審廢棄原審判決，改判小芳應給付阿豪5萬元確定。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 00:04:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238150.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8923/c8923957.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260916/3238069.htm" target="_blank">關指部肩負北區防衛　顧立雄：漢光演習為基礎精進戰備</a>
+                        </h2>
+                        <p class="card-text">秋節前夕，國防部長顧立雄今（15）日赴基隆地區，慰勉陸軍及海軍部隊，實地視導戰備偵巡之整備及執行情形，並肯定官兵用精實訓練，累積堅強戰力、守護國家安全。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/16 00:01:00</span>
+                    <a href="https://www.ettoday.net/news/20260916/3238069.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+        </div>
+        <footer>
+            <p>© 自訂 AI 新聞大腦系統 · 智慧判讀不代表真實立場</p>
+        </footer>
+    </div>
+    <button type="button" class="back-to-top" id="back-to-top" aria-label="回到頁面頂部" title="回到頁面頂部">↑</button>
+    <script>
+        var selectedSource = 'all';
+        var normalOnly = document.getElementById('normal-only');
+        var abnormalOnly = document.getElementById('abnormal-only');
+
+        function resetLabelFilters() {
+            normalOnly.checked = true;
+            abnormalOnly.checked = true;
+            selectedSource = 'all';
+            document.querySelectorAll('.btn-tag').forEach(function (button) {
+                button.classList.toggle('active', button.dataset.filter === 'all');
+            });
+            applyFilters();
+        }
+
+        function applyFilters() {
+            document.querySelectorAll('.card').forEach(function (card) {
+                var matchesSource = selectedSource === 'all' || card.dataset.source === selectedSource;
+                var isNormal = card.dataset.label === '正常' || card.querySelector('.label-normal') !== null;
+                var bothSelected = normalOnly.checked && abnormalOnly.checked;
+                var noLabelFilter = !normalOnly.checked && !abnormalOnly.checked;
+                var matchesLabel = bothSelected || noLabelFilter
+                    || normalOnly.checked && !abnormalOnly.checked && isNormal
+                    || abnormalOnly.checked && !normalOnly.checked && !isNormal;
+                card.classList.toggle('is-hidden', !matchesSource || !matchesLabel);
+            });
+        }
+
+        document.querySelectorAll('.btn-tag').forEach(function (tagButton) {
+            tagButton.addEventListener('click', function () {
+                selectedSource = tagButton.dataset.filter;
+
+                document.querySelectorAll('.btn-tag').forEach(function (button) {
+                    button.classList.toggle('active', button === tagButton);
+                });
+                applyFilters();
+            });
+        });
+        normalOnly.addEventListener('change', applyFilters);
+        abnormalOnly.addEventListener('change', applyFilters);
+        window.addEventListener('pageshow', resetLabelFilters);
+        resetLabelFilters();
+
+        var backToTop = document.getElementById('back-to-top');
+        window.addEventListener('scroll', function () {
+            backToTop.classList.toggle('is-visible', window.scrollY > 400);
+        });
+        backToTop.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>

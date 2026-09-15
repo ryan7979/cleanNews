@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新聞過濾器</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="broadcast.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="broadcast.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #020617; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; line-height: 1.5; }
+        .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); border-bottom: 1px solid #1e293b; padding: 2.5rem 1.5rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        .header-container { max-width: 1024px; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 1rem; }
+        @media (min-width: 768px) { .header-container { flex-direction: row; text-align: left; } }
+        .header-title { font-size: 1.875rem; font-weight: 900; color: #ffffff; letter-spacing: -0.025em; }
+        .header-title img { width:32px }
+        .header-subtitle { color: #94a3b8; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .header-subtitle-time { color: #f99e3d; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .badge-ai { background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        .header-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.75rem; }
+        .main-container { max-width: 1536px; margin: 0 auto; padding: 2rem 1rem; }
+        .date-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .date-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+        .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-date:hover { background-color: #334155; color: #ffffff; }
+        .tag-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .tag-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; }
+        .btn-tag { cursor: pointer; padding: 0.375rem 1rem; border-radius: 9999px; font: inherit; font-size: 0.75rem; font-weight: 500; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-tag:hover, .btn-tag.active { background-color: #4f46e5; border-color: #6366f1; color: #ffffff; }
+        .normal-filter { display: inline-flex; align-items: center; gap: 0.5rem; color: #cbd5e1; font-size: 0.75rem; font-weight: 600; }
+        .normal-filter input { width: 1rem; height: 1rem; accent-color: #4f46e5; }
+        .back-to-top { position: fixed; right: 1.5rem; bottom: 1.5rem; width: 2.75rem; height: 2.75rem; border: 1px solid #6366f1; border-radius: 50%; color: #ffffff; background: #4f46e5; cursor: pointer; font-size: 1.25rem; box-shadow: 0 8px 20px rgba(0,0,0,0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+        .back-to-top.is-visible { opacity: 1; pointer-events: auto; }
+        .back-to-top:hover { transform: translateY(-2px); }
+        .news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .card:hover { border-color: rgba(242, 120, 12, 0.5); border-width: revert; transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .img-container { width: 100%; height: 12rem; overflow: hidden; background-color: #020617; border-bottom: 1px solid #1e293b; }
+        .card-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
+        .card:hover .card-img { transform: scale(1.03); }
+        .meta-row { padding: 1.25rem 1.25rem 0.5rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
+        .meta-left { display: flex; align-items: center; gap: 0.5rem; }
+        .badge-source { font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.625rem; border-radius: 0.75rem; color: #818cf8; background-color: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); }
+        .badge-reporter { font-size: 0.75rem; color: #94a3b8; font-weight: 600; background-color: #1e293b; padding: 0.25rem 0.5rem; border-radius: 0.5rem; }
+        .badge-label { font-size: 0.6875rem; font-weight: 800; padding: 0.125rem 0.625rem; border-radius: 9999px; }
+        .label-normal { color: #34d399; background-color: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.2); }
+        .label-yp { color: #fbbf24; background-color: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2); }
+        .label-wj { color: #f87171; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); }
+        .label-trash { color: #fb923c; background-color: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); }
+        .card.is-hidden { display: none !important; }
+        .card-body { padding: 0 1.25rem 1.25rem 1.25rem; flex-grow: 1; }
+        .card-title { font-size: 1.125rem; font-weight: 700; color: #f1f5f9; line-height: 1.4; margin-bottom: 0.75rem; }
+        .card-title a { color: inherit; text-decoration: none; }
+        .card-title a:hover { color: #818cf8; }
+        .card-text { color: #94a3b8; font-size: 0.875rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-footer { padding: 1.25rem; border-top: 1px solid rgba(30, 41, 59, 0.5); display: flex; justify-content: space-between; align-items: center; background-color: rgba(15, 23, 42, 0.2); }
+        .news-date { font-size: 0.6875rem; color: #f99e3d; font-weight: bold; }
+        .btn-link { font-size: 0.75rem; font-weight: 700; color: #818cf8; text-decoration: none; display: flex; align-items: center; gap: 0.25rem; }
+        .btn-link:hover { color: #a5b4fc; }
+        .no-data { text-align: center; padding: 4rem; background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; color: #64748b; grid-column: 1 / -1; }
+        footer { text-align: center; font-size: 0.75rem; color: #475569; margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #0f172a; }
+    </style>
+</head>
+<body>
+    <div class="header-banner">
+        <div class="header-container">
+            <div>
+                <h1 class="header-title"><img src="broadcast.png" alt="新聞過濾器"> 新聞過濾器</h1>
+                <p class="header-subtitle">即時解析：媒體來源 / 網軍與業配過濾</p>
+                <p class="header-subtitle-time">最後更新：2026/09/16 05:45:37</p>
+            </div>
+            <div class="header-filters" aria-label="新聞分類篩選">
+                <label class="normal-filter">
+                    <input type="checkbox" id="normal-only" checked>
+                    <span>&#x986F;&#x793A;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+                <label class="normal-filter">
+                    <input type="checkbox" id="abnormal-only" checked>
+                    <span>&#x986F;&#x793A;&#x4E0D;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="date-navbar">
+            <span class="date-label">📅 歷史日期：</span>
+            <a href="../index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
+            <a href="/cleanNews/archive/2026-09-16.html" class="btn-date">2026-09-16</a><a href="/cleanNews/archive/2026-09-15.html" class="btn-date">2026-09-15</a><a href="/cleanNews/archive/2026-09-14.html" class="btn-date">2026-09-14</a>
+        </div>
+        <div class="tag-navbar" aria-label="新聞來源篩選">
+            <span class="tag-label">來源：</span>
+            <button type="button" class="btn-tag active" data-filter="all">全部</button><button type="button" class="btn-tag" data-filter="ETtoday 新聞雲">ETtoday 新聞雲</button><button type="button" class="btn-tag" data-filter="自由時報電子報">自由時報電子報</button><button type="button" class="btn-tag" data-filter="科技新報">科技新報</button><button type="button" class="btn-tag" data-filter="風傳媒">風傳媒</button><button type="button" class="btn-tag" data-filter="Yahoo">Yahoo</button><button type="button" class="btn-tag" data-filter="Google">Google</button>
+        </div>
+        <div class="news-grid">
+            
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924062.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260915/3238129.htm" target="_blank">張善政推智慧停車　桃園2.2萬路邊停車格提前完成智慧化</a>
+                        </h2>
+                        <p class="card-text">桃園市長張善政15日於主持市政會議表示，桃園市原訂今(115)年底前，完成全市路邊停車格智慧化，目前已提前完成2萬2,000格，包括超過4,200個智慧停車柱，其餘則採地磁等方式偵測車輛。然，考量部分長輩或市民不熟悉APP操作，市府仍保留9處服務據點提供專人協助，讓民眾可依自身需求選擇繳費方式。 《</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:59:00</span>
+                    <a href="https://www.ettoday.net/news/20260915/3238129.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924093.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://star.ettoday.net/news/3238149" target="_blank">陳建州急性心肌梗塞手術完成！　本人親報平安：抱歉讓大家擔心了</a>
+                        </h2>
+                        <p class="card-text">黑人陳建州今（15日）傍晚驚傳急性心肌梗塞，當時他正在觀看PLG友誼賽，期間突然感到身體不適，隨即前往台大醫院就醫。經醫師評估後，確認為急性心肌梗塞，緊急安排接受手術治療，目前手術已順利完成，並轉往加護病房觀察休養。稍早，陳建州也親自在社群發文報平安。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:51:00</span>
+                    <a href="https://star.ettoday.net/news/3238149" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="葉配">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924091.png" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-yp">🟡 廠商業配</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://fashion.ettoday.net/news/3238138" target="_blank">奇亞籽不是泡了就好！營養師曝「2個關鍵吃法」　很多人第一步就做錯</a>
+                        </h2>
+                        <p class="card-text">最近「奇亞籽」成為不少人的早餐、飲品新寵，加進豆漿、牛奶或隔夜燕麥都很方便。營養師夏子雯分享，奇亞籽富含膳食纖維，遇水後會形成凝膠狀，不只增加飽足感，也能補充植物性Omega-3脂肪酸及多酚類營養素。 《詳全文...》</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:50:00</span>
+                    <a href="https://fashion.ettoday.net/news/3238138" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="垃圾新聞">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMi0wJBVV95cUxOUGx4aTNSQ0VVRzZfWWdvdVZsc0M2Q3NJdWh1WnNMN0dLZlNVbVlQMnQ5N0d4NlJHUDQ4ZDVGNHlxdVRSWi1UTUptVnNHNEZNTXFHRUtENzdRbFBrZml4bV9RWXkwLTY1czk5N1NqWmU4YV9mR3lfZ0toRTQtelJrS0lvZ2ZpYm5mWWNueFowUjRsbW1oTkUxVnlYY1drSmZNMTRMYVNINFE0OGdody1wMGVyN04yRl9CcFpBT3VPTWpCdFNxdHg4RWI1aVVqZUhDSEVZWDRabTl5YW1vRkRXa0JyNnFUVUpySTctVzlLZlZNbFktZ2VMYWJLUDJTRVNQdXdYVFdvQTQzRkIwLWtOTnllSGk4U3ZnRzYxejZGWHRFNVh4VFFTdTFkSEN3eHZaVEgxa2otbUpoelZ2M3hXclNhd3kzVTRJbHhnVkFKVW1fSUk?oc=5" target="_blank">競選看板「修很大」？她同框海報遭吐槽：是你女兒要選嗎 - Yahoo新聞</a>
+                        </h2>
+                        <p class="card-text">競選看板「修很大」？她同框海報遭吐槽：是你女兒要選嗎&nbsp;&nbsp;Yahoo新聞</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:48:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMi0wJBVV95cUxOUGx4aTNSQ0VVRzZfWWdvdVZsc0M2Q3NJdWh1WnNMN0dLZlNVbVlQMnQ5N0d4NlJHUDQ4ZDVGNHlxdVRSWi1UTUptVnNHNEZNTXFHRUtENzdRbFBrZml4bV9RWXkwLTY1czk5N1NqWmU4YV9mR3lfZ0toRTQtelJrS0lvZ2ZpYm5mWWNueFowUjRsbW1oTkUxVnlYY1drSmZNMTRMYVNINFE0OGdody1wMGVyN04yRl9CcFpBT3VPTWpCdFNxdHg4RWI1aVVqZUhDSEVZWDRabTl5YW1vRkRXa0JyNnFUVUpySTctVzlLZlZNbFktZ2VMYWJLUDJTRVNQdXdYVFdvQTQzRkIwLWtOTnllSGk4U3ZnRzYxejZGWHRFNVh4VFFTdTFkSEN3eHZaVEgxa2otbUpoelZ2M3hXclNhd3kzVTRJbHhnVkFKVW1fSUk?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="網軍">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8384/c8384607.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260915/3238144.htm" target="_blank">日前首相警告台灣問題超過釣魚台爭端　評高市涉台言論「難回收」</a>
+                        </h2>
+                        <p class="card-text">北京第13屆香山論壇今（15）日登場，日本前首相鳩山由紀夫「首次」參加論壇，並且出席上午「高端論壇」。針對當前緊繃的中日關係發表看法。他直言現任首相高市早苗過去的涉台發言與日本政府既有立場落差甚大，理應收回言論以化解爭議，但考量高市本人的強硬性格，要她主動退讓「很不樂觀，可以說非常困難」。鳩山進一步</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:46:00</span>
+                    <a href="https://www.ettoday.net/news/20260915/3238144.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="網軍">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8056/c8056044.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://www.ettoday.net/news/20260915/3238145.htm" target="_blank">近百國官方代表齊聚香山論壇　韓正：反對一切軍國主義復活行徑</a>
+                        </h2>
+                        <p class="card-text">第十三屆北京香山論壇迎賓晚宴今（15）日晚間舉行，大陸國家副主席韓正出席並發表致辭。他指出，面對當前國際形勢變亂交織，提出4點建議，呼籲堅持維護聯合國憲章宗旨與原則、反對動輒使用武力或以武力相威脅，防止世界退回弱肉強食的叢林法則。韓正強調，中國始終是和平、正義與進步的力量，將堅決捍衛二戰勝利成果與戰</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:43:00</span>
+                    <a href="https://www.ettoday.net/news/20260915/3238145.htm" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="ETtoday 新聞雲" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://cdn2.ettoday.net/images/8924/c8924084.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">ETtoday 新聞雲</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://esg.ettoday.net/news/3238142" target="_blank">碳費徵收完成近50億元　彭啓明：下階段拚2028試行ETS</a>
+                        </h2>
+                        <p class="card-text">台灣碳費制度自2025年正式上路至今年5月，已完成近50億元的碳費徵收，環境部今（15日）宣布，下一階段將朝「碳費＋總量管制與排放交易制度（ETS）」雙軌並行發展。環境部長彭啓明表示，預計於今年底提出ETS試行草案，2028年開始試行ETS，初期以具備一定減碳能力、排碳量較高的20家企業為主；台灣碳</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 23:39:00</span>
+                    <a href="https://esg.ettoday.net/news/3238142" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="垃圾新聞">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiXkFVX3lxTE9IejFwckpZOG1raHQ1YmJKNzExZTZrLTYxRjZNXzI4VXE3V2UtT2U0VERUaWtQcnJieE9xM0tlbkIyVG5PRV9NaUhiQ0stUHdrczJXTVJVd1lldkYwakHSAUtBVV95cUxNbGFsUWhQZnpubTZuVlZpZE94X0tjUzRlQm1CMkZUMVhwSFd2T1J1WGZ5SDRYa2YyN3RBVFNGdUh3eU1XZUt0aGRCdWM?oc=5" target="_blank">LINE設定「2種功能快關」！他勸世喊：一堆朋友被盜　官方也示警 - ETtoday新聞雲</a>
+                        </h2>
+                        <p class="card-text">LINE設定「2種功能快關」！他勸世喊：一堆朋友被盜　官方也示警&nbsp;&nbsp;ETtoday新聞雲LINE 2功能快關掉！他疾呼：能救一個是一個 官方也示警&nbsp;&nbsp;Yahoo新聞釣魚連結詐騙增加1倍 警方呼籲勿點擊可疑連結&nbsp;&nbsp;公視新聞網PNN釣魚連結詐騙</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 22:20:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMiXkFVX3lxTE9IejFwckpZOG1raHQ1YmJKNzExZTZrLTYxRjZNXzI4VXE3V2UtT2U0VERUaWtQcnJieE9xM0tlbkIyVG5PRV9NaUhiQ0stUHdrczJXTVJVd1lldkYwakHSAUtBVV95cUxNbGFsUWhQZnpubTZuVlZpZE94X0tjUzRlQm1CMkZUMVhwSFd2T1J1WGZ5SDRYa2YyN3RBVFNGdUh3eU1XZUt0aGRCdWM?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="垃圾新聞">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMimwNBVV95cUxNWEM5MnM2MVFqU1p2UlNzYW1Oa21hZVRHbFdGNWRPY3lYdzY4OVRwSXRvcUM0cDU3dndkcGdSUWFHUWhldXhLWHA3OHB0N0FvbkU5XzQwNkdrZmhzOXBYVEFLR0o4TFgyWXZpZDZXdVNRMHNGZWRidE9XTHZIR1lkOGZEOXVvWFBKdlhidW90UzdCWGJNWXdpWTAwWWxXZE5vN0hYQnpsSkoxUmFWZmRrbW5CU2R5RDc2bmtyNTVWMFp0NVlXR0EwS3k4eWNjX09JbC0zRWhZSDJLWGZ6UTlwV0ZOeHpEOEcwY1lPcWxsUFNxRExqaHk2eXhFQndYQnJlNmdtOVRoU3FUV3I4b1FPcXlfT245d0xUMDJmcGYwYmtGdmpfOUotWXZNSUpkU2w5WmRnZUI5S25OZ0FNbzk3NEdXV3VnOXpRcDkwMzh0LTlESTI4VmppZnFyOS1XRlZoWFVFYnNPckFRUF83b1Z1Y0JQMnYybXRvX1JlaEw1dV9KZW9TX2pzMU9lNFpYNmJ3WFFRRUtqbVFpcVE?oc=5" target="_blank">獨家／黑人心肌梗塞 緊急送往台大醫院治療 老婆范瑋琪守身旁 - Yahoo新聞</a>
+                        </h2>
+                        <p class="card-text">獨家／黑人心肌梗塞 緊急送往台大醫院治療 老婆范瑋琪守身旁&nbsp;&nbsp;Yahoo新聞球賽看到一半！陳建州驚傳急性心肌梗塞「范瑋琪守病榻」 台大回應了&nbsp;&nbsp;Yahoo新聞黑人驚傳心肌梗塞！「送醫搶命」范范急陪同&nbsp;&nbsp;自由娛樂PLG副會長陳建州急性心肌梗塞</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 20:59:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMimwNBVV95cUxNWEM5MnM2MVFqU1p2UlNzYW1Oa21hZVRHbFdGNWRPY3lYdzY4OVRwSXRvcUM0cDU3dndkcGdSUWFHUWhldXhLWHA3OHB0N0FvbkU5XzQwNkdrZmhzOXBYVEFLR0o4TFgyWXZpZDZXdVNRMHNGZWRidE9XTHZIR1lkOGZEOXVvWFBKdlhidW90UzdCWGJNWXdpWTAwWWxXZE5vN0hYQnpsSkoxUmFWZmRrbW5CU2R5RDc2bmtyNTVWMFp0NVlXR0EwS3k4eWNjX09JbC0zRWhZSDJLWGZ6UTlwV0ZOeHpEOEcwY1lPcWxsUFNxRExqaHk2eXhFQndYQnJlNmdtOVRoU3FUV3I4b1FPcXlfT245d0xUMDJmcGYwYmtGdmpfOUotWXZNSUpkU2w5WmRnZUI5S25OZ0FNbzk3NEdXV3VnOXpRcDkwMzh0LTlESTI4VmppZnFyOS1XRlZoWFVFYnNPckFRUF83b1Z1Y0JQMnYybXRvX1JlaEw1dV9KZW9TX2pzMU9lNFpYNmJ3WFFRRUtqbVFpcVE?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE1YU0R2OTNLR1hTVjQyQ1JyQlVMQTZtUWdQd0l6ejJsUVhGc1BINFFxeWtoOUMxa2tVTkpIQjdsSGY2bFpWTDFWT0lPdzc0cTU1?oc=5" target="_blank">路透社民調出爐！川普支持度反彈 但共和黨前景轉趨黯淡 - UDN</a>
+                        </h2>
+                        <p class="card-text">路透社民調出爐！川普支持度反彈 但共和黨前景轉趨黯淡&nbsp;&nbsp;UDNMoneyDJ新聞 2026-09-15 13:58:09 李彥瑾 發佈&nbsp;&nbsp;MoneyDJ白宮狂人即將跛腳？川普期中測驗11月3日登場：眾院435席、參院35席改選，一文看懂美國期中選舉| 國際中心</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 20:40:08</span>
+                    <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE1YU0R2OTNLR1hTVjQyQ1JyQlVMQTZtUWdQd0l6ejJsUVhGc1BINFFxeWtoOUMxa2tVTkpIQjdsSGY2bFpWTDFWT0lPdzc0cTU1?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMisgJBVV95cUxQdGItR2pHdjNQTE04QzhBbVdPYmpHazRmY2RCeVdYVmRuQWM2aWxOSG5lWDVzVUhoeF92RkVLMlRWcHdSRFNxWWdPMUluV0ppbU9yU2lsWHR1SjZMVkZTT2VtakJUd2NPQlNPbGF5SlNfSVJlTUJHZ3ZHcWJFajNnOVN5amRkZEd5OTJVSXozazhnVHdSQ3FuTEUtNF8xUU56cU54V2p5UUtFc19aV0ZYY2FSblFVN1ZRR3lPUXdsa3BqYUh4X0JDNTlKZG5yWFVHZ3NENzV1Ynh4NXIzS1FMZm9HN2NfSC1KU19ZeDN4amlISnZNLVhWXzhyUjVmaHEzSldiRGFNSTM4T1dzVTI4QUxjT1B2ZUp0Q0ZPam1FQ2pCRk9ETlJQbGFVUVMyUnRMc0E?oc=5" target="_blank">駕駛艙畫面曝！74歲泰王「親開飛機」攜后訪越南 - Yahoo新聞</a>
+                        </h2>
+                        <p class="card-text">駕駛艙畫面曝！74歲泰王「親開飛機」攜后訪越南&nbsp;&nbsp;Yahoo新聞影／泰王夫婦出訪竟自己開飛機！雨中駕波音737 駕駛艙畫面曝光&nbsp;&nbsp;UDN（影）74歲泰王夫妻「聯手飛越南」畫面曝光 帥過捍衛戰士&nbsp;&nbsp;自由娛樂好威！泰王親駕專機飛往河內 王后坐副</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 19:13:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMisgJBVV95cUxQdGItR2pHdjNQTE04QzhBbVdPYmpHazRmY2RCeVdYVmRuQWM2aWxOSG5lWDVzVUhoeF92RkVLMlRWcHdSRFNxWWdPMUluV0ppbU9yU2lsWHR1SjZMVkZTT2VtakJUd2NPQlNPbGF5SlNfSVJlTUJHZ3ZHcWJFajNnOVN5amRkZEd5OTJVSXozazhnVHdSQ3FuTEUtNF8xUU56cU54V2p5UUtFc19aV0ZYY2FSblFVN1ZRR3lPUXdsa3BqYUh4X0JDNTlKZG5yWFVHZ3NENzV1Ynh4NXIzS1FMZm9HN2NfSC1KU19ZeDN4amlISnZNLVhWXzhyUjVmaHEzSldiRGFNSTM4T1dzVTI4QUxjT1B2ZUp0Q0ZPam1FQ2pCRk9ETlJQbGFVUVMyUnRMc0E?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE83bGd4TWVEbXlaVDM1SjR4dF84NEJpZ3hZNUZNeTB3MXZRd1VUNEtYQ2U0d2FaNExXcU4wT1ZrZjAtRVU1ajBTSNIBTEFVX3lxTE95YWRpWWxQUE9FWjJiQVFwZU5sa2M0ajJ2SkhNVmkxWlJIMDg5LUVlaUZhZmdQdU9IWHRJc0p5MVR6Z2VzX25oNnJWbnE?oc=5" target="_blank">杜鵑颱風最快週三晨生成！預估路徑大迴轉　氣象署曝對台影響 - 三立新聞</a>
+                        </h2>
+                        <p class="card-text">杜鵑颱風最快週三晨生成！預估路徑大迴轉　氣象署曝對台影響&nbsp;&nbsp;三立新聞杜鵑颱風最快今生成！最新路徑、對台影響曝 降雨熱區一次看&nbsp;&nbsp;Yahoo新聞今晴偶雨飆35度高溫 杜鵑颱風最快今生成 吳德榮估將在日本南方大迴轉&nbsp;&nbsp;UDN熱帶性低氣壓將形成「</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 18:28:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE83bGd4TWVEbXlaVDM1SjR4dF84NEJpZ3hZNUZNeTB3MXZRd1VUNEtYQ2U0d2FaNExXcU4wT1ZrZjAtRVU1ajBTSNIBTEFVX3lxTE95YWRpWWxQUE9FWjJiQVFwZU5sa2M0ajJ2SkhNVmkxWlJIMDg5LUVlaUZhZmdQdU9IWHRJc0p5MVR6Z2VzX25oNnJWbnE?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9vOFBMUnNjRTVHMVNVWWl3NW8yRVVlSEptbUFsSHU0MnBTRlNKSm9jU2VaWTlBcEx1SFlzQTBoMzY4Q2lkTk9oZUx6OVJqSXRueE8wMXg1aGhUX21mUFlF?oc=5" target="_blank">五角大廈證實美軍彈藥短缺 對伊朗前4個月花費達1.06兆 - 中央社 CNA</a>
+                        </h2>
+                        <p class="card-text">五角大廈證實美軍彈藥短缺 對伊朗前4個月花費達1.06兆&nbsp;&nbsp;中央社 CNA五角大廈曝伊朗戰爭美軍戰損！F-35受損 最多30架MQ-9遭摧毀&nbsp;&nbsp;自由軍武頻道美國會預算處：對伊朗戰爭已耗費美軍380億美元&nbsp;&nbsp;經濟日報不怕被川普罵「叛國敗類」?</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 18:14:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMiX0FVX3lxTE9vOFBMUnNjRTVHMVNVWWl3NW8yRVVlSEptbUFsSHU0MnBTRlNKSm9jU2VaWTlBcEx1SFlzQTBoMzY4Q2lkTk9oZUx6OVJqSXRueE8wMXg1aGhUX21mUFlF?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMipARBVV95cUxOV3NTVTQ3OUhqenlJNUphandHQ0pPVGNRdzhBcWNOVlgtVlJxUkhrWF9GXzhkN0E2MUJwaVEtOEFPN0xPRjl5ZEpVTUlmMmJ6ZlV0Nm9fc2FlSV9GNnM1cTRrNjRsc3VMSFVzQlE2c3NMd25hWDV0MGtETUhnbTNBWUNJb2RQMTA3OTI5NVZvNUVHSHpSdFE1QlNUQ2thbno4QnlRTHB4eW11SzlJY3dfaWRmTWZGR19oWnNURWZWaEUybEV6Z01aQ1N2emNoU2tEVG45NjdhZVNpWlJUcGtVZnNuQzFkQlA1TmMtdlNxOXVtMkdiblRET0c4WEZMcHBNcWp2aHNyZU8tYlRjT1NvUkw3UUJoYTAxcm94N1N4TnoxckZkRHExVkV4TjVPWkYzWi1vTml5aGZ3UjRXYWF2OTlCM1o0ME5lYXJLemVhMmxVWVJPTkhjYk9VcmZuZmZoa0IyZTFRTm14ajhpR05KSDJIaGFLZDBRcHZlVmtXS0NsdUc1ZkFUUTg1RmhsS0MxVmhRSGlHY1N5M3p0Z0N5aGJCUTFSdjREQzF3c2xMV296dUQwRm44RjVmd3dXcXp6ODJTMW50SENNV3JVUjFzamxaRlZ5MnNHR3lQc0NkMlNLWW8wbEswRWNHX3N2S0FmVVBqbTQwT05QYmZJbUVEbnAxSk9NWTkzcXV6RHF0a0o2TC1jWEhvQkktYVg0Tjl3Vlp4UQ?oc=5" target="_blank">漢測凍資8656億！台股收黑量縮今年次低台達電回神攜資安、矽晶圓當救援隊｜Yahoo財經掃描 - Yahoo股市</a>
+                        </h2>
+                        <p class="card-text">漢測凍資8656億！台股收黑量縮今年次低台達電回神攜資安、矽晶圓當救援隊｜Yahoo財經掃描&nbsp;&nbsp;Yahoo股市台股開盤》台積電開盤漲25元！指數平盤震盪&nbsp;&nbsp;自由財經台股大跌原因，外界推測油價高與AI放緩引疑慮！低點可以撿？&nbsp;&nbsp;遠見雜誌成交量</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 17:16:14</span>
+                    <a href="https://news.google.com/rss/articles/CBMipARBVV95cUxOV3NTVTQ3OUhqenlJNUphandHQ0pPVGNRdzhBcWNOVlgtVlJxUkhrWF9GXzhkN0E2MUJwaVEtOEFPN0xPRjl5ZEpVTUlmMmJ6ZlV0Nm9fc2FlSV9GNnM1cTRrNjRsc3VMSFVzQlE2c3NMd25hWDV0MGtETUhnbTNBWUNJb2RQMTA3OTI5NVZvNUVHSHpSdFE1QlNUQ2thbno4QnlRTHB4eW11SzlJY3dfaWRmTWZGR19oWnNURWZWaEUybEV6Z01aQ1N2emNoU2tEVG45NjdhZVNpWlJUcGtVZnNuQzFkQlA1TmMtdlNxOXVtMkdiblRET0c4WEZMcHBNcWp2aHNyZU8tYlRjT1NvUkw3UUJoYTAxcm94N1N4TnoxckZkRHExVkV4TjVPWkYzWi1vTml5aGZ3UjRXYWF2OTlCM1o0ME5lYXJLemVhMmxVWVJPTkhjYk9VcmZuZmZoa0IyZTFRTm14ajhpR05KSDJIaGFLZDBRcHZlVmtXS0NsdUc1ZkFUUTg1RmhsS0MxVmhRSGlHY1N5M3p0Z0N5aGJCUTFSdjREQzF3c2xMV296dUQwRm44RjVmd3dXcXp6ODJTMW50SENNV3JVUjFzamxaRlZ5MnNHR3lQc0NkMlNLWW8wbEswRWNHX3N2S0FmVVBqbTQwT05QYmZJbUVEbnAxSk9NWTkzcXV6RHF0a0o2TC1jWEhvQkktYVg0Tjl3Vlp4UQ?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE9FSUNmcERabEdoR1dUbW8yaE5LTHFaLW5BRExjbE5ZeDV6QjNWRC0tR0pZMFh0aURna1pGOW1VTEJtT3BETWN4QdIBTEFVX3lxTE16THQtR2doR2RNWU4tbEM1bEVKbzNqak1uclY4N2xKUU5YN3ppS2hvX1dqVFVaMk5sWFF6dFh3WEZpTlhqMUN4aTM2U24?oc=5" target="_blank">赴中出席APEC恐遭強塞台胞證？洪申翰重申：既有模式與會、一定對等尊嚴 - 三立新聞</a>
+                        </h2>
+                        <p class="card-text">赴中出席APEC恐遭強塞台胞證？洪申翰重申：既有模式與會、一定對等尊嚴&nbsp;&nbsp;三立新聞洪申翰赴中出席APEC 喊「對等尊嚴、不自我設限」 Chinese Taipei是正式名稱&nbsp;&nbsp;Yahoo新聞因中共出入境新規上路而改口 台灣國赴勞動部喊「洪申翰加油」 | New</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 16:06:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE9FSUNmcERabEdoR1dUbW8yaE5LTHFaLW5BRExjbE5ZeDV6QjNWRC0tR0pZMFh0aURna1pGOW1VTEJtT3BETWN4QdIBTEFVX3lxTE16THQtR2doR2RNWU4tbEM1bEVKbzNqak1uclY4N2xKUU5YN3ppS2hvX1dqVFVaMk5sWFF6dFh3WEZpTlhqMUN4aTM2U24?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE84X0NqNUxDazlKUklYQzR6UGR3MjFvUmRiTmcyRkEyekR0dFNEWVczUmVFMmM4X3ozSDUtQi1kcTRHRDZuRkg5azBFNnJsSFpX0gFWQVVfeXFMTm9MVF9UbGpHbnpqYzBZS2lLVk14UHAzclNCdzh2SmZJZl9TUlJMeFFicF9RTnZrMVE1bWhIWVFJVldBM0FzeDlVMDRPVnRFa2RHa2hpWlE?oc=5" target="_blank">竹聯義堂武將「小麥可」協助共諜張俊傑逃亡 曾犯下立法院槍擊案 - UDN</a>
+                        </h2>
+                        <p class="card-text">竹聯義堂武將「小麥可」協助共諜張俊傑逃亡 曾犯下立法院槍擊案&nbsp;&nbsp;UDN張俊傑棄保逃亡不單純！矢板明夫：台灣被滲透比想像還深...&nbsp;&nbsp;自由時報第7個接應人曝光！23歲陳厚彰開白車載張俊傑南逃 躲進雲林古坑民宿仍遭逮&nbsp;&nbsp;Yahoo新聞竹聯「武將</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 15:03:36</span>
+                    <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE84X0NqNUxDazlKUklYQzR6UGR3MjFvUmRiTmcyRkEyekR0dFNEWVczUmVFMmM4X3ozSDUtQi1kcTRHRDZuRkg5azBFNnJsSFpX0gFWQVVfeXFMTm9MVF9UbGpHbnpqYzBZS2lLVk14UHAzclNCdzh2SmZJZl9TUlJMeFFicF9RTnZrMVE1bWhIWVFJVldBM0FzeDlVMDRPVnRFa2RHa2hpWlE?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="網軍">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiTEFVX3lxTE96a2R5VldoWWVobV83R1czczlHeXROTjI2Y3lQSGt5VkZHLWF5UjlkUFNhRkVINlNpT2Z5SjUxN1JnRlVtOElmT1VyLTPSAVJBVV95cUxOS3lCUHNkbU83aTZJZ3pIQmhyMFRGY0ZFc0hHNVp2TmMzT0QzYnAzREZDV0RFRkYxUnRmdmU1amJEbUQ2UUQzbV8xeC1LaGs1VnJ3?oc=5" target="_blank">沈伯洋民調追上蔣萬安？秦慧珠開箱「真實數據」：哭吧吳思瑤 - NOWnews今日新聞</a>
+                        </h2>
+                        <p class="card-text">沈伯洋民調追上蔣萬安？秦慧珠開箱「真實數據」：哭吧吳思瑤&nbsp;&nbsp;NOWnews今日新聞沈伯洋公館掃街擠爆 支持者喊︰自己來的&nbsp;&nbsp;Yahoo新聞公館夜市捲「洋流」！沈伯洋夜掃2小時 店家「餵食」大辣蔥抓餅 | 自由電子報&nbsp;&nbsp;LINE TODAYY</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 13:37:10</span>
+                    <a href="https://news.google.com/rss/articles/CBMiTEFVX3lxTE96a2R5VldoWWVobV83R1czczlHeXROTjI2Y3lQSGt5VkZHLWF5UjlkUFNhRkVINlNpT2Z5SjUxN1JnRlVtOElmT1VyLTPSAVJBVV95cUxOS3lCUHNkbU83aTZJZ3pIQmhyMFRGY0ZFc0hHNVp2TmMzT0QzYnAzREZDV0RFRkYxUnRmdmU1amJEbUQ2UUQzbV8xeC1LaGs1VnJ3?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/05/28075615/Wolfram_evaporated_crystals_and_1cm3_cube.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/us-government-stake-elmet-tungsten-strengthens-domestic-supply-chain/" target="_blank">美政府入股鎢礦商 Elmet  強化本土供應鏈</a>
+                        </h2>
+                        <p class="card-text">美國政府斥資 4.5 億美元入股鎢礦生產商 Elmet，以促進國內鎢產量、強化本土供應鏈；Elmet 股價聞訊 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 13:30:19</span>
+                    <a href="https://technews.tw/2026/09/15/us-government-stake-elmet-tungsten-strengthens-domestic-supply-chain/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15123958/moon-city-Base-water-ice-ai.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/moon-city-water-ice/" target="_blank">月球城市水資源恐撐不到百年，科學家：電力夠，致命傷是缺水</a>
+                        </h2>
+                        <p class="card-text">在月球打造太空城市是宏偉藍圖還是海市蜃樓？月球資源具永續性嗎？ 新研究精算一筆非常現實的帳，指出若缺乏高效回收 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 12:40:34</span>
+                    <a href="https://technews.tw/2026/09/15/moon-city-water-ice/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15122022/Austin-Texas-USA_river.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/texas-orders-ai-data-centers-to-report-water-usage-info/" target="_blank">AI 資料中心搶水  德州下令強制申報用水資訊</a>
+                        </h2>
+                        <p class="card-text">全美各地狂蓋 AI 資料中心，讓缺電、缺水成為一大隱憂。德州州長艾波特（Greg Abbott）14日下令，要 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 12:30:28</span>
+                    <a href="https://technews.tw/2026/09/15/texas-orders-ai-data-centers-to-report-water-usage-info/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15120544/location-taichung-taiwan-site.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/micron-taiwan-union-rejects-one-time-bonuses-seeks-15-operating-profit-share/" target="_blank">台灣美光工會：不要一次性獎金，盼營業利益 15% 分潤制</a>
+                        </h2>
+                        <p class="card-text">台灣美光工會今天召開記者會，強調不要一次性獎金，希望能夠制定公開透明且可驗證的分潤制度，目標是營業利益 15% [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 12:10:15</span>
+                    <a href="https://technews.tw/2026/09/15/micron-taiwan-union-rejects-one-time-bonuses-seeks-15-operating-profit-share/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/04/08172119/corning1.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://finance.technews.tw/2026/09/15/corning-launches-2-billion-dollar-capital-raising-plan/" target="_blank">康寧跳水 13%  增資＋AI 降速風險引發疑慮</a>
+                        </h2>
+                        <p class="card-text">特殊玻璃、陶瓷材料兼光纖製造巨擘康寧（Corning）啟動規模最高達 20 億美元的增資計畫，適逢 AI 巨頭 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 12:00:45</span>
+                    <a href="https://finance.technews.tw/2026/09/15/corning-launches-2-billion-dollar-capital-raising-plan/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15114913/nvidia-cuda-q-quantum-computing.jpeg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/nvidia-expands-open-source-cuda-q-platform-for-fault-tolerant-quantum-computing/" target="_blank">輝達推量子開源平台新技術，助研發速度提升 7 倍</a>
+                        </h2>
+                        <p class="card-text">人工智慧（AI）晶片大廠輝達（NVIDIA）加速布局量子運算，今天宣布擴展旗下開源 CUDA-Q 平台，在 I [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:50:25</span>
+                    <a href="https://technews.tw/2026/09/15/nvidia-expands-open-source-cuda-q-platform-for-fault-tolerant-quantum-computing/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15095940/Streaming-Platforms-Home-TV-channels-editorial-use.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/netflix-amazon-youtube-alliance/" target="_blank">捍衛轉播版圖，Netflix、亞馬遜與 YouTube 共組聯盟迎戰華府監管</a>
+                        </h2>
+                        <p class="card-text">為了在串流內容與體育轉播權日益受到華府監管關注之際，替產業爭取更有利的政策環境，Amazon、Netflix  [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:40:33</span>
+                    <a href="https://technews.tw/2026/09/15/netflix-amazon-youtube-alliance/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="葉配">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15113651/4039933.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-yp">🟡 廠商業配</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://finance.technews.tw/2026/09/15/three-consecutive-months-of-profit/" target="_blank">街口支付甩開虧損迎連三月轉盈！總座范庭甄：損益兩平並非終點</a>
+                        </h2>
+                        <p class="card-text">街口支付今日宣布用戶數已突破 730 萬，並實現開業以來首次轉虧為盈，6 、7、8 月連續三個月獲利，上半年整 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:32:11</span>
+                    <a href="https://finance.technews.tw/2026/09/15/three-consecutive-months-of-profit/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15101418/AP25048068698644.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/lady-gagas-tech-ceo-fiancee-is-training-an-ai-model-on-data-collected-from-human-skin/" target="_blank">Lady Gaga 未婚夫創辦 Outer Bio，靠「真實皮膚數據」尋找新藥解方</a>
+                        </h2>
+                        <p class="card-text">Lady Gaga 的未婚夫、科技與生技業高層麥可·波蘭斯基（Michael Polansky）近期因其創辦的 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:30:45</span>
+                    <a href="https://technews.tw/2026/09/15/lady-gagas-tech-ceo-fiancee-is-training-an-ai-model-on-data-collected-from-human-skin/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/07/29092556/A-brain-over-cpu-represents-artificial-intelligence..jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://infosecu.technews.tw/2026/09/15/palantir-nvidia-curb-ai-model-use-over-data-fears-the-information-reports/" target="_blank">輝達 Palantir 等開始設限 OpenAI / Anthropic 使用範圍，微軟趁機推銷自家 AI 方案</a>
+                        </h2>
+                        <p class="card-text">大型科技與政府服務企業正因資料隱私與智慧財產保護疑慮，重新檢視尖端 AI 模型的依賴度。外媒《The Info [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:20:22</span>
+                    <a href="https://infosecu.technews.tw/2026/09/15/palantir-nvidia-curb-ai-model-use-over-data-fears-the-information-reports/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15105600/siri__mfeve50fboii_large.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/ios-27-new-siri-ai/" target="_blank">蘋果 iOS 27 正式上線：最強 Siri AI 降臨，全新介面與支援機型一次看</a>
+                        </h2>
+                        <p class="card-text">蘋果於 9 月 14 日正式向相容裝置推送 iOS 27，這次更新與 macOS Golden Gate（ma [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:10:26</span>
+                    <a href="https://technews.tw/2026/09/15/ios-27-new-siri-ai/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="垃圾新聞">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2025/10/21093148/iOS-26.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-trash">🗑️ 垃圾新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/apple-releases-ios-26-7-with-security-fixes/" target="_blank">不想升級 iOS 27 也沒問題，蘋果同步釋出 iOS 26.7 主打重要安全修補無新功能</a>
+                        </h2>
+                        <p class="card-text">蘋果（Apple）14 日推出年度大改版 iOS 27 同時，也釋出 iOS 26.7，替尚未準備好升級的 i [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:05:09</span>
+                    <a href="https://technews.tw/2026/09/15/apple-releases-ios-26-7-with-security-fixes/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2025/11/13173431/Global-Carbon.png" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/us-backs-out-revokes-power-plant-carbon-emission-regulations-major-exemptions-coal-gas-power/" target="_blank">美國不跟了？撤銷發電廠碳排規範，煤、氣發電迎大豁免</a>
+                        </h2>
+                        <p class="card-text">美國化石燃料發電迎來一大豁免。川普政府持續鬆綁能源管制，美國環保署（EPA）14 日正式撤銷拜登政府 2024 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:04:39</span>
+                    <a href="https://technews.tw/2026/09/15/us-backs-out-revokes-power-plant-carbon-emission-regulations-major-exemptions-coal-gas-power/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15092601/Loft-Orbital.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/uae-massive-investment-space-ai-world-largest-satellite-infrastructure/" target="_blank">阿聯巨資押注太空 AI，建造全球最大衛星基礎設施</a>
+                        </h2>
+                        <p class="card-text">阿拉伯聯合大公國積極布局人工智慧與太空產業，將投入鉅資與國際夥伴打造全球最大 AI 衛星基礎設施。此專案標誌阿 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 11:00:42</span>
+                    <a href="https://technews.tw/2026/09/15/uae-massive-investment-space-ai-world-largest-satellite-infrastructure/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="科技新報" data-label="正常">
+                <div>
+                    
+            <div class="img-container">
+                <img src="https://img.technews.tw/wp-content/uploads/2026/09/15110310/40938833.jpg" class="card-img" alt="新聞圖片" onerror="this.parentNode.style.display='none'">
+            </div>
+            
+                    <div class="meta-row">
+                        <span class="badge-source">科技新報</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://technews.tw/2026/09/15/tiancai/" target="_blank">演化從未停止！陽明交大解碼 7 萬台灣人 DNA 揭開「天擇」真相</a>
+                        </h2>
+                        <p class="card-text">科學家從超過 7 萬名台灣漢人的基因資料中發現自然選擇的證據，特別是影響與疾病及紅血球性狀相關的遺傳變異，影響 [&#8230;]</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/15 10:51:48</span>
+                    <a href="https://technews.tw/2026/09/15/tiancai/" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+        </div>
+        <footer>
+            <p>© 自訂 AI 新聞大腦系統 · 智慧判讀不代表真實立場</p>
+        </footer>
+    </div>
+    <button type="button" class="back-to-top" id="back-to-top" aria-label="回到頁面頂部" title="回到頁面頂部">↑</button>
+    <script>
+        var selectedSource = 'all';
+        var normalOnly = document.getElementById('normal-only');
+        var abnormalOnly = document.getElementById('abnormal-only');
+
+        function resetLabelFilters() {
+            normalOnly.checked = true;
+            abnormalOnly.checked = true;
+            selectedSource = 'all';
+            document.querySelectorAll('.btn-tag').forEach(function (button) {
+                button.classList.toggle('active', button.dataset.filter === 'all');
+            });
+            applyFilters();
+        }
+
+        function applyFilters() {
+            document.querySelectorAll('.card').forEach(function (card) {
+                var matchesSource = selectedSource === 'all' || card.dataset.source === selectedSource;
+                var isNormal = card.dataset.label === '正常' || card.querySelector('.label-normal') !== null;
+                var bothSelected = normalOnly.checked && abnormalOnly.checked;
+                var noLabelFilter = !normalOnly.checked && !abnormalOnly.checked;
+                var matchesLabel = bothSelected || noLabelFilter
+                    || normalOnly.checked && !abnormalOnly.checked && isNormal
+                    || abnormalOnly.checked && !normalOnly.checked && !isNormal;
+                card.classList.toggle('is-hidden', !matchesSource || !matchesLabel);
+            });
+        }
+
+        document.querySelectorAll('.btn-tag').forEach(function (tagButton) {
+            tagButton.addEventListener('click', function () {
+                selectedSource = tagButton.dataset.filter;
+
+                document.querySelectorAll('.btn-tag').forEach(function (button) {
+                    button.classList.toggle('active', button === tagButton);
+                });
+                applyFilters();
+            });
+        });
+        normalOnly.addEventListener('change', applyFilters);
+        abnormalOnly.addEventListener('change', applyFilters);
+        window.addEventListener('pageshow', resetLabelFilters);
+        resetLabelFilters();
+
+        var backToTop = document.getElementById('back-to-top');
+        window.addEventListener('scroll', function () {
+            backToTop.classList.toggle('is-visible', window.scrollY > 400);
+        });
+        backToTop.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>

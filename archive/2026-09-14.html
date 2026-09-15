@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新聞過濾器</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="broadcast.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="broadcast.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #020617; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; line-height: 1.5; }
+        .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); border-bottom: 1px solid #1e293b; padding: 2.5rem 1.5rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        .header-container { max-width: 1024px; margin: 0 auto; display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 1rem; }
+        @media (min-width: 768px) { .header-container { flex-direction: row; text-align: left; } }
+        .header-title { font-size: 1.875rem; font-weight: 900; color: #ffffff; letter-spacing: -0.025em; }
+        .header-title img { width:32px }
+        .header-subtitle { color: #94a3b8; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .header-subtitle-time { color: #f99e3d; font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500; }
+        .badge-ai { background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        .header-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.75rem; }
+        .main-container { max-width: 1536px; margin: 0 auto; padding: 2rem 1rem; }
+        .date-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .date-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+        .btn-date { display: inline-block; padding: 0.375rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; text-decoration: none; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-date:hover { background-color: #334155; color: #ffffff; }
+        .tag-navbar { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(12px); padding: 1rem; border-radius: 1rem; border: 1px solid #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; overflow-x: auto; white-space: nowrap; }
+        .tag-label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; }
+        .btn-tag { cursor: pointer; padding: 0.375rem 1rem; border-radius: 9999px; font: inherit; font-size: 0.75rem; font-weight: 500; border: 1px solid #334155; color: #cbd5e1; background-color: #1e293b; }
+        .btn-tag:hover, .btn-tag.active { background-color: #4f46e5; border-color: #6366f1; color: #ffffff; }
+        .normal-filter { display: inline-flex; align-items: center; gap: 0.5rem; color: #cbd5e1; font-size: 0.75rem; font-weight: 600; }
+        .normal-filter input { width: 1rem; height: 1rem; accent-color: #4f46e5; }
+        .back-to-top { position: fixed; right: 1.5rem; bottom: 1.5rem; width: 2.75rem; height: 2.75rem; border: 1px solid #6366f1; border-radius: 50%; color: #ffffff; background: #4f46e5; cursor: pointer; font-size: 1.25rem; box-shadow: 0 8px 20px rgba(0,0,0,0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+        .back-to-top.is-visible { opacity: 1; pointer-events: auto; }
+        .back-to-top:hover { transform: translateY(-2px); }
+        .news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .card { background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .card:hover { border-color: rgba(242, 120, 12, 0.5); border-width: revert; transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .img-container { width: 100%; height: 12rem; overflow: hidden; background-color: #020617; border-bottom: 1px solid #1e293b; }
+        .card-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
+        .card:hover .card-img { transform: scale(1.03); }
+        .meta-row { padding: 1.25rem 1.25rem 0.5rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
+        .meta-left { display: flex; align-items: center; gap: 0.5rem; }
+        .badge-source { font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.625rem; border-radius: 0.75rem; color: #818cf8; background-color: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); }
+        .badge-reporter { font-size: 0.75rem; color: #94a3b8; font-weight: 600; background-color: #1e293b; padding: 0.25rem 0.5rem; border-radius: 0.5rem; }
+        .badge-label { font-size: 0.6875rem; font-weight: 800; padding: 0.125rem 0.625rem; border-radius: 9999px; }
+        .label-normal { color: #34d399; background-color: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.2); }
+        .label-yp { color: #fbbf24; background-color: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.2); }
+        .label-wj { color: #f87171; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); }
+        .label-trash { color: #fb923c; background-color: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); }
+        .card.is-hidden { display: none !important; }
+        .card-body { padding: 0 1.25rem 1.25rem 1.25rem; flex-grow: 1; }
+        .card-title { font-size: 1.125rem; font-weight: 700; color: #f1f5f9; line-height: 1.4; margin-bottom: 0.75rem; }
+        .card-title a { color: inherit; text-decoration: none; }
+        .card-title a:hover { color: #818cf8; }
+        .card-text { color: #94a3b8; font-size: 0.875rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-footer { padding: 1.25rem; border-top: 1px solid rgba(30, 41, 59, 0.5); display: flex; justify-content: space-between; align-items: center; background-color: rgba(15, 23, 42, 0.2); }
+        .news-date { font-size: 0.6875rem; color: #f99e3d; font-weight: bold; }
+        .btn-link { font-size: 0.75rem; font-weight: 700; color: #818cf8; text-decoration: none; display: flex; align-items: center; gap: 0.25rem; }
+        .btn-link:hover { color: #a5b4fc; }
+        .no-data { text-align: center; padding: 4rem; background-color: #0f172a; border-radius: 1.5rem; border: 1px solid #1e293b; color: #64748b; grid-column: 1 / -1; }
+        footer { text-align: center; font-size: 0.75rem; color: #475569; margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #0f172a; }
+    </style>
+</head>
+<body>
+    <div class="header-banner">
+        <div class="header-container">
+            <div>
+                <h1 class="header-title"><img src="broadcast.png" alt="新聞過濾器"> 新聞過濾器</h1>
+                <p class="header-subtitle">即時解析：媒體來源 / 網軍與業配過濾</p>
+                <p class="header-subtitle-time">最後更新：2026/09/16 05:45:37</p>
+            </div>
+            <div class="header-filters" aria-label="新聞分類篩選">
+                <label class="normal-filter">
+                    <input type="checkbox" id="normal-only" checked>
+                    <span>&#x986F;&#x793A;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+                <label class="normal-filter">
+                    <input type="checkbox" id="abnormal-only" checked>
+                    <span>&#x986F;&#x793A;&#x4E0D;&#x6B63;&#x5E38;&#x65B0;&#x805E;</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="date-navbar">
+            <span class="date-label">📅 歷史日期：</span>
+            <a href="../index.html" class="btn-date" style="background-color:#4f46e5;color:#fff;font-weight:700;">最新</a>
+            <a href="/cleanNews/archive/2026-09-16.html" class="btn-date">2026-09-16</a><a href="/cleanNews/archive/2026-09-15.html" class="btn-date">2026-09-15</a><a href="/cleanNews/archive/2026-09-14.html" class="btn-date">2026-09-14</a>
+        </div>
+        <div class="tag-navbar" aria-label="新聞來源篩選">
+            <span class="tag-label">來源：</span>
+            <button type="button" class="btn-tag active" data-filter="all">全部</button><button type="button" class="btn-tag" data-filter="ETtoday 新聞雲">ETtoday 新聞雲</button><button type="button" class="btn-tag" data-filter="自由時報電子報">自由時報電子報</button><button type="button" class="btn-tag" data-filter="科技新報">科技新報</button><button type="button" class="btn-tag" data-filter="風傳媒">風傳媒</button><button type="button" class="btn-tag" data-filter="Yahoo">Yahoo</button><button type="button" class="btn-tag" data-filter="Google">Google</button>
+        </div>
+        <div class="news-grid">
+            
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE5kZDMwcVhuemxyV2NrRVczMTVWbnNrdnlydE1ZbW41WE45LVpHNE1pTWlMdWNnTjItd0EwZjd3UWZXUlg3Q0ZtRExPRlJxRFRz0gFWQVVfeXFMT0o5c1BQS29JczN4NlhTMnd3aDdKVlpNeUlJN2tCNS1jTnNvczhoRC1NQVZqR3ZNeEVzRmZoYUs1WmJWU0hmbGEyMkRoT1Q4aTlvMV9uclE?oc=5" target="_blank">蕭美琴、李遠分赴義、法後…中法外長通話 王毅要求法方恪守一中原則 - UDN</a>
+                        </h2>
+                        <p class="card-text">蕭美琴、李遠分赴義、法後…中法外長通話 王毅要求法方恪守一中原則&nbsp;&nbsp;UDN蕭副總統義大利演說駐歐盟代表謝志偉：疑似中國人員盯場情蒐| 政治&nbsp;&nbsp;中央社 CNA蕭美琴訪歐 新模式未突破舊框架&nbsp;&nbsp;Yahoo新聞蕭美琴出訪義大利 卓揆：任何阻礙都阻</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/14 22:56:22</span>
+                    <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE5kZDMwcVhuemxyV2NrRVczMTVWbnNrdnlydE1ZbW41WE45LVpHNE1pTWlMdWNnTjItd0EwZjd3UWZXUlg3Q0ZtRExPRlJxRFRz0gFWQVVfeXFMT0o5c1BQS29JczN4NlhTMnd3aDdKVlpNeUlJN2tCNS1jTnNvczhoRC1NQVZqR3ZNeEVzRmZoYUs1WmJWU0hmbGEyMkRoT1Q4aTlvMV9uclE?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE1NR0xwQnpzMTRUS0hoRVg0dTVrdFVES0FDMGxmRXBUN29WRU1pakN1UXR3NG11djA5bEtzQWt6T1dMX2Z3dkNvMHE5MXR2SUVM?oc=5" target="_blank">波烏邊境遇攻擊！前英相強生搭車驚魂「逃過一劫」：普亭是被逼到牆角的老鼠| 國際焦點| 全球 - UDN</a>
+                        </h2>
+                        <p class="card-text">波烏邊境遇攻擊！前英相強生搭車驚魂「逃過一劫」：普亭是被逼到牆角的老鼠| 國際焦點| 全球&nbsp;&nbsp;UDN烏克蘭無視川普警告 襲擊俄羅斯煉油廠&nbsp;&nbsp;Yahoo股市前英相強生波烏邊境驚魂稱普丁是被逼到牆角的老鼠| 國際&nbsp;&nbsp;中央社 CNA俄國無人機襲烏</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/14 22:38:29</span>
+                    <a href="https://news.google.com/rss/articles/CBMiUEFVX3lxTE1NR0xwQnpzMTRUS0hoRVg0dTVrdFVES0FDMGxmRXBUN29WRU1pakN1UXR3NG11djA5bEtzQWt6T1dMX2Z3dkNvMHE5MXR2SUVM?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="正常">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-normal">🟢 正常新聞</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiW0FVX3lxTE5BOHpKSnB6UUpOS2tQb2taN2Qwc0VtZWJaeEpiWXA2UXdVQldxdkEzd3NNMTFWc3A3MF9JVHJ0UmtvSVBPUnByMTIyalhBMGVBQ0l0cTVvQWFKNTg?oc=5" target="_blank">胡塞軍距美軍基地不到32公里! CNN痛批 : 美和沙國犯下「史詩級錯誤」 - Newtalk新聞</a>
+                        </h2>
+                        <p class="card-text">胡塞軍距美軍基地不到32公里! CNN痛批 : 美和沙國犯下「史詩級錯誤」&nbsp;&nbsp;Newtalk新聞葉門胡塞武裝避制裁有術 多角化金融網絡年收數十億&nbsp;&nbsp;Yahoo股市沙烏地管線遇襲對歐洲減供原油　買家急尋替代來源&nbsp;&nbsp;自由財經葉門叛軍襲沙烏地阿拉</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/14 16:56:44</span>
+                    <a href="https://news.google.com/rss/articles/CBMiW0FVX3lxTE5BOHpKSnB6UUpOS2tQb2taN2Qwc0VtZWJaeEpiWXA2UXdVQldxdkEzd3NNMTFWc3A3MF9JVHJ0UmtvSVBPUnByMTIyalhBMGVBQ0l0cTVvQWFKNTg?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+            <div class="card" data-source="Google" data-label="網軍">
+                <div>
+                    
+                    <div class="meta-row">
+                        <span class="badge-source">Google</span>
+                        <span class="badge-label label-wj">🔴 網軍風向</span>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-title">
+                            <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE1XRUpLU3YwVzZTY0hBRHVESWl5U1NCSHhJOGJUV1Z5V0tPWm5YMWEtbUlkdTdBM2VZcEJGcjJJT2YtdGY0WEhwc9IBTEFVX3lxTE53TWNxZFNrdXBGOFBzRWhVck5HTEstWjlEcUVTT1plWFdEU2pyZlM3WFpVN3dSRWZ0bWp6dnc3S0dsQ2ZQOW5XNTNwNFA?oc=5" target="_blank">習近平驚傳身體不適！印度總理1句關心　小粉紅怒喊辱華：主席被當畜牲 - 三立新聞</a>
+                        </h2>
+                        <p class="card-text">習近平驚傳身體不適！印度總理1句關心　小粉紅怒喊辱華：主席被當畜牲&nbsp;&nbsp;三立新聞印度推數位盧比連接亞洲各國 金磚國家跨境支付藏挑戰&nbsp;&nbsp;Yahoo股市中國領銜金磚國家開源 AI 倡議 抗衡美國科技壟斷&nbsp;&nbsp;PChome Online 股市中印關係</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="news-date">🕒 2026/09/14 11:35:00</span>
+                    <a href="https://news.google.com/rss/articles/CBMiSEFVX3lxTE1XRUpLU3YwVzZTY0hBRHVESWl5U1NCSHhJOGJUV1Z5V0tPWm5YMWEtbUlkdTdBM2VZcEJGcjJJT2YtdGY0WEhwc9IBTEFVX3lxTE53TWNxZFNrdXBGOFBzRWhVck5HTEstWjlEcUVTT1plWFdEU2pyZlM3WFpVN3dSRWZ0bWp6dnc3S0dsQ2ZQOW5XNTNwNFA?oc=5" target="_blank" class="btn-link">
+                        前往原文 <span class="arrow">→</span>
+                    </a>
+                </div>
+            </div>
+        
+        </div>
+        <footer>
+            <p>© 自訂 AI 新聞大腦系統 · 智慧判讀不代表真實立場</p>
+        </footer>
+    </div>
+    <button type="button" class="back-to-top" id="back-to-top" aria-label="回到頁面頂部" title="回到頁面頂部">↑</button>
+    <script>
+        var selectedSource = 'all';
+        var normalOnly = document.getElementById('normal-only');
+        var abnormalOnly = document.getElementById('abnormal-only');
+
+        function resetLabelFilters() {
+            normalOnly.checked = true;
+            abnormalOnly.checked = true;
+            selectedSource = 'all';
+            document.querySelectorAll('.btn-tag').forEach(function (button) {
+                button.classList.toggle('active', button.dataset.filter === 'all');
+            });
+            applyFilters();
+        }
+
+        function applyFilters() {
+            document.querySelectorAll('.card').forEach(function (card) {
+                var matchesSource = selectedSource === 'all' || card.dataset.source === selectedSource;
+                var isNormal = card.dataset.label === '正常' || card.querySelector('.label-normal') !== null;
+                var bothSelected = normalOnly.checked && abnormalOnly.checked;
+                var noLabelFilter = !normalOnly.checked && !abnormalOnly.checked;
+                var matchesLabel = bothSelected || noLabelFilter
+                    || normalOnly.checked && !abnormalOnly.checked && isNormal
+                    || abnormalOnly.checked && !normalOnly.checked && !isNormal;
+                card.classList.toggle('is-hidden', !matchesSource || !matchesLabel);
+            });
+        }
+
+        document.querySelectorAll('.btn-tag').forEach(function (tagButton) {
+            tagButton.addEventListener('click', function () {
+                selectedSource = tagButton.dataset.filter;
+
+                document.querySelectorAll('.btn-tag').forEach(function (button) {
+                    button.classList.toggle('active', button === tagButton);
+                });
+                applyFilters();
+            });
+        });
+        normalOnly.addEventListener('change', applyFilters);
+        abnormalOnly.addEventListener('change', applyFilters);
+        window.addEventListener('pageshow', resetLabelFilters);
+        resetLabelFilters();
+
+        var backToTop = document.getElementById('back-to-top');
+        window.addEventListener('scroll', function () {
+            backToTop.classList.toggle('is-visible', window.scrollY > 400);
+        });
+        backToTop.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>
